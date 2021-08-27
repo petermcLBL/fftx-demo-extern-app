@@ -17,7 +17,11 @@ set ( CMAKE_C_STANDARD 11 )
 set ( CMAKE_CXX_STANDARD 11 )
 
 set ( CUDA_COMPILE_FLAGS -m64 -rdc=false )
-set ( LIBS_FOR_CUDA cufft culibos )
+if ( WIN32 )
+    set ( LIBS_FOR_CUDA cufft )
+else ()
+    set ( LIBS_FOR_CUDA cufft culibos )
+endif ()
 
 add_executable             ( ${PROJECT} ${PROJECT}.cu )
 target_compile_options     ( ${PROJECT} PRIVATE ${CUDA_COMPILE_FLAGS} )
