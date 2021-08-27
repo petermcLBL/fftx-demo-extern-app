@@ -61,7 +61,7 @@ include ( "${FFTX_SOURCE_DIR}/CMakeIncludes/FFTXCmakeFunctions.cmake" )
 ##  FFTX_LIB_LIBRARY_PATH  -- path to libraries (for linker)
 ##  
 ##  You don't need to call FFTX_find_libraries() directly unless you
-##  specifically want acces to the variables listed above -- its
+##  specifically want access to the variables listed above -- its
 ##  called as part of FFTX_add_includes_libs_to_target ( _target )
 ##
 ##  FFTX_find_libraries ()
