@@ -6,10 +6,10 @@
 #include "fftx_imddft_public.h"
 #include "fftx_mdprdft_public.h"
 #include "fftx_imdprdft_public.h"
-// #include "fftx_rconv_public.h"
+#include "fftx_rconv_public.h"
 
-// Need this for AllSizes3 only
-#include "fftx_imdprdft_decls.h"
+//  Need this for AllSizes3 only
+//  #include "fftx_imdprdft_decls.h"
 
 #include "mddft.fftx.precompile.hpp"
 #include "imddft.fftx.precompile.hpp"
@@ -478,33 +478,34 @@ int main(int argc, char* argv[])
     }
   printf("Running with verbosity %d and %d iterations\n", verbosity, iterations);
 
+  fftx::point_t<3> *wcube, curr;
+  wcube = fftx_rconv_QuerySizes();
   // last entry is { 0, 0, 0 }
-  int numentries = sizeof ( AllSizes3 ) / sizeof ( fftx::point_t<3> ) - 1;
 
-  for ( int ind = 0; ind < numentries; ind++ )
-    {
-      fftx::point_t<3> sz = AllSizes3[ind];
+  for ( int ind = 0; ; ind++ ) {
+	  curr = wcube[ind];
+	  if ( curr.x[0] == 0 && curr.x[1] == 0 && curr.x[2] == 0 ) break;
 
-      {
-        fftx::mddft<3> tfm(sz);
-        compareSize(tfm, mddftDevice, iterations, verbosity);
-       }
-
-      {
-        fftx::imddft<3> tfm(sz);
-        compareSize(tfm, imddftDevice, iterations, verbosity);
-       }
+	  {
+		  fftx::mddft<3> tfm(curr);
+		  compareSize(tfm, mddftDevice, iterations, verbosity);
+	  }
 
       {
-        fftx::mdprdft<3> tfm(sz);
-        compareSize(tfm, mdprdftDevice, iterations, verbosity);
+		  fftx::imddft<3> tfm(curr);
+		  compareSize(tfm, imddftDevice, iterations, verbosity);
+	  }
+
+      {
+		  fftx::mdprdft<3> tfm(curr);
+		  compareSize(tfm, mdprdftDevice, iterations, verbosity);
       }
 
       {
-        fftx::imdprdft<3> tfm(sz);
-        compareSize(tfm, imdprdftDevice, iterations, verbosity);
+		  fftx::imdprdft<3> tfm(curr);
+		  compareSize(tfm, imdprdftDevice, iterations, verbosity);
       }
-    }
+  }
   
   printf("%s: All done, exiting\n", argv[0]);
   return 0;

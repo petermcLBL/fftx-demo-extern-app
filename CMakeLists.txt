@@ -24,6 +24,9 @@ target_compile_options     ( ${PROJECT} PRIVATE ${CUDA_COMPILE_FLAGS} )
 set_property        ( TARGET ${PROJECT} PROPERTY CUDA_RESOLVE_DEVICE_SYMBOLS ON )
 target_link_libraries      ( ${PROJECT} ${LIBS_FOR_CUDA} )
 
+set ( DFT_libtest dftbatlib_test )
+add_executable             ( ${DFT_libtest} ${DFT_libtest}.cpp )
+
 ##  Setup and access any SPIRAL related items...
 ##  Get SPIRAL home...
 
@@ -70,7 +73,8 @@ include ( "${FFTX_SOURCE_DIR}/CMakeIncludes/FFTXCmakeFunctions.cmake" )
 ##  message ( STATUS "Library path is: ${FFTX_LIB_LIBRARY_PATH}" )
 
 FFTX_add_includes_libs_to_target ( ${PROJECT} )
+FFTX_add_includes_libs_to_target ( ${DFT_libtest} )
 
 install ( TARGETS
-    ${PROJECT}
+    ${PROJECT} ${DFT_libtest}
     DESTINATION ${CMAKE_BINARY_DIR}/bin )
