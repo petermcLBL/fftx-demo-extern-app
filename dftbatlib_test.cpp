@@ -6,6 +6,9 @@
 #include <string.h>
 
 #include "fftx_dftbat_public.h"
+#include "fftx_idftbat_public.h"
+#include "fftx_prdftbat_public.h"
+#include "fftx_iprdftbat_public.h"
 
 //  Size will be defined when compiling 
 //  #define M		100
@@ -72,20 +75,13 @@ static void checkOutputBuffers ( double *Y, double *hipfft_Y )
 }
 #endif
 
-int main() {
-
-	fftx::point_t<2> *wcube, curr;
-	int iloop = 0;
+static void exercise_lib_entries ( fftx::point_t<2> *wcube )
+{
+	fftx::point_t<2> curr;
+	transformTuple_t *tupl;
 	double *X, *Y;
 
-	wcube = fftx_dftbat_QuerySizes();
-	if (wcube == NULL) {
-		printf ( "Failed to get list of available sizes\n" );
-		exit (-1);
-	}
-
-	transformTuple_t *tupl;
-	for ( iloop = 0; ; iloop++ ) {
+	for ( int iloop = 0; ; iloop++ ) {
 		//  loop thru all the sizes in the library...
 		curr = wcube[iloop];
 		if ( curr.x[0] == 0 && curr.x[1] == 0 ) break;
@@ -119,6 +115,54 @@ int main() {
 			free ( Y );
 		}
 	}
+
+	return;
+}
+
+
+int main() {
+
+	fftx::point_t<2> *wcube, curr;
+	int iloop = 0;
+	double *X, *Y;
+	transformTuple_t *tupl;
+
+	wcube = fftx_dftbat_QuerySizes();
+	if (wcube == NULL) {
+		printf ( "Failed to get list of available sizes from dftbat library\n" );
+		exit (-1);
+	}
+
+	printf ( "Run all sizes from the dftbat library\n" );
+	exercise_lib_entries ( wcube );
+
+	wcube = fftx_idftbat_QuerySizes();
+	if (wcube == NULL) {
+		printf ( "Failed to get list of available sizes from idftbat library\n" );
+		exit (-1);
+	}
+
+	printf ( "Run all sizes from the idftbat library\n" );
+	exercise_lib_entries ( wcube );
+
+	wcube = fftx_prdftbat_QuerySizes();
+	if (wcube == NULL) {
+		printf ( "Failed to get list of available sizes from prdftbat library\n" );
+		exit (-1);
+	}
+
+	printf ( "Run all sizes from the prdftbat library\n" );
+	exercise_lib_entries ( wcube );
+
+	wcube = fftx_iprdftbat_QuerySizes();
+	if (wcube == NULL) {
+		printf ( "Failed to get list of available sizes from iprdftbat library\n" );
+		exit (-1);
+	}
+
+	printf ( "Run all sizes from the iprdftbat library\n" );
+	exercise_lib_entries ( wcube );
+
 
 	//  Find specific entries in the library based on the size parameters...
 	fftx::point_t<2> szs[] = { {1, 32}, {1, 60}, {1, 256}, {4, 64},
