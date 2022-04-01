@@ -9,8 +9,11 @@
 ##  define normal items needed in app
 
 cmake_minimum_required ( VERSION 3.18 )
-set ( PROJECT testcompare_device )
+set ( PROJECT transformlib_test )
 project ( ${PROJECT} LANGUAGES C CXX CUDA )
+
+set ( DFT_libtest dftbatlib_test )
+set ( COMPARE_device testcompare_device )
 
 ##  Set C standard 11
 set ( CMAKE_C_STANDARD 11 )
@@ -28,11 +31,15 @@ target_compile_options     ( ${PROJECT} PRIVATE ${CUDA_COMPILE_FLAGS} )
 set_property        ( TARGET ${PROJECT} PROPERTY CUDA_RESOLVE_DEVICE_SYMBOLS ON )
 target_link_libraries      ( ${PROJECT} ${LIBS_FOR_CUDA} )
 
-set ( DFT_libtest dftbatlib_test )
+add_executable             ( ${COMPARE_device} ${COMPARE_device}.cu )
+target_compile_options     ( ${COMPARE_device} PRIVATE ${CUDA_COMPILE_FLAGS} )
+set_property        ( TARGET ${COMPARE_device} PROPERTY CUDA_RESOLVE_DEVICE_SYMBOLS ON )
+target_link_libraries      ( ${COMPARE_device} ${LIBS_FOR_CUDA} )
+
 add_executable             ( ${DFT_libtest} ${DFT_libtest}.cpp )
 
 ##  Setup and access any SPIRAL related items...
-##  Get SPIRAL home...
+##  Get SPIRAL home... only need SPIRAL for some include files
 
 if ( DEFINED ENV{SPIRAL_HOME} )
     message ( STATUS "SPIRAL_HOME = $ENV{SPIRAL_HOME}" )
@@ -71,14 +78,20 @@ include ( "${FFTX_SOURCE_DIR}/CMakeIncludes/FFTXCmakeFunctions.cmake" )
 ##  specifically want access to the variables listed above -- its
 ##  called as part of FFTX_add_includes_libs_to_target ( _target )
 ##
-##  FFTX_find_libraries ()
+
+FFTX_find_libraries ()
 ##  message ( STATUS "Include paths:   ${FFTX_LIB_INCLUDE_PATHS}" )
 ##  message ( STATUS "Libraries found: ${FFTX_LIB_NAMES}" )
 ##  message ( STATUS "Library path is: ${FFTX_LIB_LIBRARY_PATH}" )
 
+##  Setup CMAKE_INSTALL_RPATH to point to the FFTX library directory
+set ( CMAKE_INSTALL_RPATH ${FFTX_LIB_LIBRARY_PATH} )
+message ( STATUS "Defined: INSTALL_RPATH = ${CMAKE_INSTALL_RPATH}" )
+
 FFTX_add_includes_libs_to_target ( ${PROJECT} )
 FFTX_add_includes_libs_to_target ( ${DFT_libtest} )
+FFTX_add_includes_libs_to_target ( ${COMPARE_device} )
 
 install ( TARGETS
-    ${PROJECT} ${DFT_libtest}
+    ${PROJECT} ${DFT_libtest} ${COMPARE_device}
     DESTINATION ${CMAKE_BINARY_DIR}/bin )

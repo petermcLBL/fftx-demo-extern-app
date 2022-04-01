@@ -1,7 +1,4 @@
 #include <stdio.h>
-//  #include <hip/hip_runtime.h>
-//  #include <hipfft.h>
-//  #include "rocfft.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -9,12 +6,6 @@
 #include "fftx_idftbat_public.h"
 #include "fftx_prdftbat_public.h"
 #include "fftx_iprdftbat_public.h"
-
-//  Size will be defined when compiling 
-//  #define M		100
-//  #define N		224
-//  #define K		224
-//  #define FUNCNAME		mddft3d
 
 static int M, N, K;
 
@@ -29,51 +20,6 @@ static void buildInputBuffer(double *X)
 
 	return;
 }
-
-#if 0
-static void checkOutputBuffers ( double *Y, double *hipfft_Y )
-{
-	printf("cube = [ %d, %d, %d ]\t", M, N, K);
-	hipfftDoubleComplex *host_Y        = new hipfftDoubleComplex[M*N*K];
-	hipfftDoubleComplex *host_hipfft_Y = new hipfftDoubleComplex[M*N*K];
-
-	hipMemcpy(host_Y       ,        Y, M*N*K*sizeof(hipfftDoubleComplex), hipMemcpyDeviceToHost);
-	hipMemcpy(host_hipfft_Y, hipfft_Y, M*N*K*sizeof(hipfftDoubleComplex), hipMemcpyDeviceToHost);
-
-	bool correct = true;
-	int errCount = 0;
-	double maxdelta = 0.0;
-
-	for (int m = 0; m < 1; m++) {
-		for (int n = 0; n < N; n++) {
-			for (int k = 0; k < K; k++) {
-				hipfftDoubleComplex s = host_Y       [k + n*K + m*N*K];
-				hipfftDoubleComplex c = host_hipfft_Y[k + n*K + m*N*K];
-	    
-				bool elem_correct =
-					(abs(s.x - c.x) < 1e-7) &&
-					(abs(s.y - c.y) < 1e-7);
-				maxdelta = maxdelta < (double)(abs(s.x -c.x)) ? (double)(abs(s.x -c.x)) : maxdelta ;
-				maxdelta = maxdelta < (double)(abs(s.y -c.y)) ? (double)(abs(s.y -c.y)) : maxdelta ;
-
-				correct &= elem_correct;
-				if (!elem_correct && errCount < 10) 
-				{
-					correct = false;
-					errCount++;
-					//  printf("error at (%d,%d,%d): %f+%fi instead of %f+%fi\n", k, n, m, s.x, s.y, c.x, c.y);
-				}
-			}
-		}
-	}
-	
-	printf ( "Correct: %s\tMax delta = %E\t\t##PICKME## \n", (correct ? "True" : "False"), maxdelta );
-	delete[] host_Y;
-	delete[] host_hipfft_Y;
-
-	return;
-}
-#endif
 
 static void exercise_lib_entries ( fftx::point_t<2> *wcube )
 {
