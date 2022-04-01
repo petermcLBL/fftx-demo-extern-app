@@ -59,6 +59,7 @@ static void checkOutputBuffers ( double *Y, double *cufft_Y )
 	}
 	
 	printf ( "Correct: %s\tMax delta = %E\t\t##PICKME## \n", (correct ? "True" : "False"), maxdelta );
+	fflush ( stdout );
 	delete[] host_Y;
 	delete[] host_cufft_Y;
 
