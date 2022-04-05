@@ -9,34 +9,34 @@
 ##  define normal items needed in app
 
 cmake_minimum_required ( VERSION 3.18 )
-set ( PROJECT transformlib_test )
-project ( ${PROJECT} LANGUAGES C CXX CUDA )
+set ( PROJECT dftbatlib_test )
 
-set ( DFT_libtest dftbatlib_test )
+project ( FFTX_DUMMY LANGUAGES C CXX )
+
+find_package ( CUDAToolkit )
+if ( ${CUDAToolkit_FOUND} )
+    message ( STATUS "CUDA Toolkit Found : Version = ${CUDAToolkit_VERSION}" )
+    project ( ${PROJECT} LANGUAGES C CXX CUDA )
+else ()
+    message ( STATUS "CUDA Toolkit NOT found -- only build CPU / serial example" )
+    project ( ${PROJECT} LANGUAGES C CXX )
+endif ()
+
+set ( XFORMLIB_test transformlib_test )
 set ( COMPARE_device testcompare_device )
 
 ##  Set C standard 11
 set ( CMAKE_C_STANDARD 11 )
 set ( CMAKE_CXX_STANDARD 11 )
 
-set ( CUDA_COMPILE_FLAGS -m64 -rdc=false )
-if ( WIN32 )
-    set ( LIBS_FOR_CUDA cufft )
-else ()
-    set ( LIBS_FOR_CUDA cufft culibos )
+if ( ${CUDAToolkit_FOUND} )
+    set ( CUDA_COMPILE_FLAGS -m64 -rdc=false )
+    if ( WIN32 )
+	set ( LIBS_FOR_CUDA cufft )
+    else ()
+	set ( LIBS_FOR_CUDA cufft culibos )
+    endif ()
 endif ()
-
-add_executable             ( ${PROJECT} ${PROJECT}.cu )
-target_compile_options     ( ${PROJECT} PRIVATE ${CUDA_COMPILE_FLAGS} )
-set_property        ( TARGET ${PROJECT} PROPERTY CUDA_RESOLVE_DEVICE_SYMBOLS ON )
-target_link_libraries      ( ${PROJECT} ${LIBS_FOR_CUDA} )
-
-add_executable             ( ${COMPARE_device} ${COMPARE_device}.cu )
-target_compile_options     ( ${COMPARE_device} PRIVATE ${CUDA_COMPILE_FLAGS} )
-set_property        ( TARGET ${COMPARE_device} PROPERTY CUDA_RESOLVE_DEVICE_SYMBOLS ON )
-target_link_libraries      ( ${COMPARE_device} ${LIBS_FOR_CUDA} )
-
-add_executable             ( ${DFT_libtest} ${DFT_libtest}.cpp )
 
 ##  Setup and access any SPIRAL related items...
 ##  Get SPIRAL home... only need SPIRAL for some include files
@@ -84,14 +84,49 @@ FFTX_find_libraries ()
 ##  message ( STATUS "Libraries found: ${FFTX_LIB_NAMES}" )
 ##  message ( STATUS "Library path is: ${FFTX_LIB_LIBRARY_PATH}" )
 
-##  Setup CMAKE_INSTALL_RPATH to point to the FFTX library directory
+##  Setup CMAKE_INSTALL_PREFIX to point to the top level source directory
+set ( CMAKE_INSTALL_PREFIX ${CMAKE_CURRENT_SOURCE_DIR} )
+message ( STATUS "CMAKE_INSTALL_PREFIX = ${CMAKE_INSTALL_PREFIX}" )
+
+##  set CMAKE_INSTALL_RPATH to point to FFTX library directory
+##  use, i.e. don't skip the full RPATH for the build tree
+set ( CMAKE_SKIP_BUILD_RPATH FALSE )
+
+##  when building, don't use the install RPATH already (but later on when installing)
+set ( CMAKE_BUILD_WITH_INSTALL_RPATH FALSE )
 set ( CMAKE_INSTALL_RPATH ${FFTX_LIB_LIBRARY_PATH} )
+
+##  Add the automatically determined parts of the RPATH that point to directories outside
+##  the build tree to the install RPATH
+set ( CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE )
+
+##  the RPATH to be used when installing, but only if it's not a system directory
+list ( FIND CMAKE_PLATFORM_IMPLICIT_LINK_DIRECTORIES ${FFTX_LIB_LIBRARY_PATH} isSystemDir )
+if ( "${isSystemDir}" STREQUAL "-1" )
+    set ( CMAKE_INSTALL_RPATH ${FFTX_LIB_LIBRARY_PATH} )
+endif ()
+
 message ( STATUS "Defined: INSTALL_RPATH = ${CMAKE_INSTALL_RPATH}" )
 
-FFTX_add_includes_libs_to_target ( ${PROJECT} )
-FFTX_add_includes_libs_to_target ( ${DFT_libtest} )
-FFTX_add_includes_libs_to_target ( ${COMPARE_device} )
+add_executable             ( ${PROJECT} ${PROJECT}.cpp )
+set ( _targets ${PROJECT} )
 
-install ( TARGETS
-    ${PROJECT} ${DFT_libtest} ${COMPARE_device}
-    DESTINATION ${CMAKE_BINARY_DIR}/bin )
+if ( ${CUDAToolkit_FOUND} )
+    add_executable             ( ${XFORMLIB_test} ${XFORMLIB_test}.cu )
+    target_compile_options     ( ${XFORMLIB_test} PRIVATE ${CUDA_COMPILE_FLAGS} )
+    set_property        ( TARGET ${XFORMLIB_test} PROPERTY CUDA_RESOLVE_DEVICE_SYMBOLS ON )
+    target_link_libraries      ( ${XFORMLIB_test} ${LIBS_FOR_CUDA} )
+    list ( APPEND _targets ${XFORMLIB_test} )
+
+    add_executable             ( ${COMPARE_device} ${COMPARE_device}.cu )
+    target_compile_options     ( ${COMPARE_device} PRIVATE ${CUDA_COMPILE_FLAGS} )
+    set_property        ( TARGET ${COMPARE_device} PROPERTY CUDA_RESOLVE_DEVICE_SYMBOLS ON )
+    target_link_libraries      ( ${COMPARE_device} ${LIBS_FOR_CUDA} )
+    list ( APPEND _targets ${COMPARE_device} )
+endif ()
+
+foreach ( _targ ${_targets} )
+    FFTX_add_includes_libs_to_target ( ${_targ} )
+endforeach ()
+
+install ( TARGETS ${_targets} DESTINATION ${CMAKE_INSTALL_PREFIX}/bin )
