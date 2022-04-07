@@ -8,10 +8,47 @@
 ##  Sample external application that wants to use FFTX
 ##  define normal items needed in app
 
-cmake_minimum_required ( VERSION 3.18 )
+cmake_minimum_required ( VERSION 3.14 )
 set ( PROJECT dftbatlib_test )
 
-project ( FFTX_DUMMY LANGUAGES C CXX )
+enable_language ( C )
+enable_language ( CXX )
+    
+##  check_language ( CUDA )
+##  if ( CMAKE_CUDA_COMPILER )
+##      enable_language ( CUDA )
+##  else ()
+##      message ( STATUS "No support for CUDA available" )
+##  endif ()
+
+##  check_language ( HIP )
+##  if ( CMAKE_HIP_COMPILER )
+##      enable_language ( HIP )
+##  else ()
+##      message ( STATUS "No support for HIP available" )
+##  endif ()
+    
+##  project ( FFTX_DUMMY LANGUAGES C CXX )
+
+##  Check if we're on Apple/MAC
+##  Check if arch should be x86_64 or arm64
+
+if ( APPLE )
+    message ( STATUS "Running on Apple / MAC" )
+    message ( STATUS "CMAKE_OSX_ARCHITECTURES = ${CMAKE_OSX_ARCHITECTURES}" )
+    message ( STATUS "CMAKE_SYSTEM_PROCESSOR = ${CMAKE_SYSTEM_PROCESSOR}" )
+    if ( ${CMAKE_OSX_ARCHITECTURES} MATCHES "x86_64" OR ${CMAKE_SYSTEM_PROCESSOR} MATCHES "x86_64.*")
+	set ( ADDL_COMPILE_FLAGS -arch x86_64 )
+        message ( STATUS "CMAKE_OSX_ARCHITECTURES = ${CMAKE_OSX_ARCHITECTURES}, set addl compile flags: ${ADDL_COMPILE_FLAGS}" )
+    elseif ( ${CMAKE_OSX_ARCHITECTURES} MATCHES "arm64" OR ${CMAKE_SYSTEM_PROCESSOR} MATCHES "aarch64.*" )
+    	message ( STATUS "CMAKE_OSX_ARCHITECTURES = ${CMAKE_OSX_ARCHITECTURES} and CMAKE_SYSTEM_PROCESSOR = ${CMAKE_SYSTEM_PROCESSOR}" )
+	set ( ADDL_COMPILE_FLAGS -arch arm64 )
+        message ( STATUS "CMAKE_OSX_ARCHITECTURES = ${CMAKE_OSX_ARCHITECTURES}, set addl compile flags: ${ADDL_COMPILE_FLAGS}" )
+    else ()
+        message ( STATUS "CMAKE_OSX_ARCHITECTURES = ${CMAKE_OSX_ARCHITECTURES}, no addl flags set" )
+    endif ()
+endif ()	
+
 
 find_package ( CUDAToolkit )
 if ( ${CUDAToolkit_FOUND} )
