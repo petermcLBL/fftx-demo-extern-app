@@ -13,54 +13,48 @@ set ( PROJECT dftbatlib_test )
 
 enable_language ( C )
 enable_language ( CXX )
+
+set ( CMAKE_CUDA_ARCHITECTURES 60 61 62 70 72 75 80 )
+
+include ( CheckLanguage )
+check_language ( CUDA )
+if ( CMAKE_CUDA_COMPILER )
+    enable_language ( CUDA )
+    find_package ( CUDAToolkit )
+    if ( ${CUDAToolkit_FOUND} )
+	message ( STATUS "CUDA Toolkit Found : Version = ${CUDAToolkit_VERSION}" )
+	project ( ${PROJECT} LANGUAGES C CXX CUDA )
+    else ()
+	message ( STATUS "CUDA Toolkit NOT found -- only build CPU / serial example" )
+	project ( ${PROJECT} LANGUAGES C CXX )
+    endif ()
+else ()
+    message ( STATUS "No support for CUDA available" )
+endif ()
+
+check_language ( HIP )
+if ( CMAKE_HIP_COMPILER )
+    enable_language ( HIP )
+else ()
+    message ( STATUS "No support for HIP available" )
+endif ()
     
-##  check_language ( CUDA )
-##  if ( CMAKE_CUDA_COMPILER )
-##      enable_language ( CUDA )
-##  else ()
-##      message ( STATUS "No support for CUDA available" )
-##  endif ()
-
-##  check_language ( HIP )
-##  if ( CMAKE_HIP_COMPILER )
-##      enable_language ( HIP )
-##  else ()
-##      message ( STATUS "No support for HIP available" )
-##  endif ()
-    
-##  project ( FFTX_DUMMY LANGUAGES C CXX )
-
-##  Check if we're on Apple/MAC
-##  Check if arch should be x86_64 or arm64
-
 if ( APPLE )
+    ##  Check if we're on Apple/MAC
+    ##  Check if arch should be x86_64 or arm64
     message ( STATUS "Running on Apple / MAC" )
     message ( STATUS "CMAKE_OSX_ARCHITECTURES = ${CMAKE_OSX_ARCHITECTURES}" )
     message ( STATUS "CMAKE_SYSTEM_PROCESSOR = ${CMAKE_SYSTEM_PROCESSOR}" )
-    if ( ${CMAKE_OSX_ARCHITECTURES} MATCHES "x86_64" OR ${CMAKE_SYSTEM_PROCESSOR} MATCHES "x86_64.*")
-	set ( ADDL_COMPILE_FLAGS -arch x86_64 )
-        message ( STATUS "CMAKE_OSX_ARCHITECTURES = ${CMAKE_OSX_ARCHITECTURES}, set addl compile flags: ${ADDL_COMPILE_FLAGS}" )
-    elseif ( ${CMAKE_OSX_ARCHITECTURES} MATCHES "arm64" OR ${CMAKE_SYSTEM_PROCESSOR} MATCHES "aarch64.*" )
-    	message ( STATUS "CMAKE_OSX_ARCHITECTURES = ${CMAKE_OSX_ARCHITECTURES} and CMAKE_SYSTEM_PROCESSOR = ${CMAKE_SYSTEM_PROCESSOR}" )
+    if ( ${CMAKE_OSX_ARCHITECTURES} MATCHES "arm64" OR ${CMAKE_SYSTEM_PROCESSOR} MATCHES "aarch64.*" )
 	set ( ADDL_COMPILE_FLAGS -arch arm64 )
-        message ( STATUS "CMAKE_OSX_ARCHITECTURES = ${CMAKE_OSX_ARCHITECTURES}, set addl compile flags: ${ADDL_COMPILE_FLAGS}" )
-    else ()
-        message ( STATUS "CMAKE_OSX_ARCHITECTURES = ${CMAKE_OSX_ARCHITECTURES}, no addl flags set" )
+        message ( STATUS "Set addl compile flags: ${ADDL_COMPILE_FLAGS}" )
+    elseif ( ${CMAKE_OSX_ARCHITECTURES} MATCHES "x86_64" OR ${CMAKE_SYSTEM_PROCESSOR} MATCHES "x86_64.*")
+	set ( ADDL_COMPILE_FLAGS -arch x86_64 )
+        message ( STATUS "Set addl compile flags: ${ADDL_COMPILE_FLAGS}" )
     endif ()
 endif ()	
 
-
-find_package ( CUDAToolkit )
-if ( ${CUDAToolkit_FOUND} )
-    message ( STATUS "CUDA Toolkit Found : Version = ${CUDAToolkit_VERSION}" )
-    project ( ${PROJECT} LANGUAGES C CXX CUDA )
-else ()
-    message ( STATUS "CUDA Toolkit NOT found -- only build CPU / serial example" )
-    project ( ${PROJECT} LANGUAGES C CXX )
-endif ()
-
 set ( XFORMLIB_test transformlib_test )
-set ( COMPARE_device testcompare_device )
 
 ##  Set C standard 11
 set ( CMAKE_C_STANDARD 11 )
@@ -117,9 +111,9 @@ include ( "${FFTX_SOURCE_DIR}/CMakeIncludes/FFTXCmakeFunctions.cmake" )
 ##
 
 FFTX_find_libraries ()
-##  message ( STATUS "Include paths:   ${FFTX_LIB_INCLUDE_PATHS}" )
-##  message ( STATUS "Libraries found: ${FFTX_LIB_NAMES}" )
-##  message ( STATUS "Library path is: ${FFTX_LIB_LIBRARY_PATH}" )
+message ( STATUS "Include paths:   ${FFTX_LIB_INCLUDE_PATHS}" )
+message ( STATUS "Libraries found: ${FFTX_LIB_NAMES}" )
+message ( STATUS "Library path is: ${FFTX_LIB_LIBRARY_PATH}" )
 
 ##  Setup CMAKE_INSTALL_PREFIX to point to the top level source directory
 set ( CMAKE_INSTALL_PREFIX ${CMAKE_CURRENT_SOURCE_DIR} )
@@ -154,12 +148,6 @@ if ( ${CUDAToolkit_FOUND} )
     set_property        ( TARGET ${XFORMLIB_test} PROPERTY CUDA_RESOLVE_DEVICE_SYMBOLS ON )
     target_link_libraries      ( ${XFORMLIB_test} ${LIBS_FOR_CUDA} )
     list ( APPEND _targets ${XFORMLIB_test} )
-
-    add_executable             ( ${COMPARE_device} ${COMPARE_device}.cu )
-    target_compile_options     ( ${COMPARE_device} PRIVATE ${CUDA_COMPILE_FLAGS} )
-    set_property        ( TARGET ${COMPARE_device} PROPERTY CUDA_RESOLVE_DEVICE_SYMBOLS ON )
-    target_link_libraries      ( ${COMPARE_device} ${LIBS_FOR_CUDA} )
-    list ( APPEND _targets ${COMPARE_device} )
 endif ()
 
 foreach ( _targ ${_targets} )
