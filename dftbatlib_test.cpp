@@ -122,7 +122,7 @@ int main() {
 		tupl = fftx_dftbat_Tuple ( curr);
 		if ( tupl != NULL ) {
 			//  allocate memory
-			printf ( "\nAllocate buffers of size %d for input/output", M * N * 2 * sizeof(double) );
+			printf ( "\nAllocate buffers of size %ld for input/output", M * N * 2 * sizeof(double) );
 			X = (double *) malloc ( M * N * 2 * sizeof(double) );
 			Y = (double *) malloc ( M * N * 2 * sizeof(double) );
 
