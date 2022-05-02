@@ -66,7 +66,7 @@ static void checkOutputBuffers ( double *Y, double *cufft_Y )
 	return;
 }
 
-int main() {
+int main ( int argc, char* argv[] ) {
 
 	fftx::point_t<3> *wcube, curr;
 	int iloop = 0;
@@ -74,6 +74,12 @@ int main() {
 	double sym[100];  // dummy symbol
 						  
 	//  cudaEvent_t start, stop, custart, custop;
+
+	//  Currently only runs on GPU - CUDA, check library support this mode
+	if ( fftx_mddft_GetLibraryMode () != LIB_MODE_CUDA ) {
+		printf ( "%s: fftx_mddft doesn't support CUDA, exiting...\n", argv[0] );
+		exit (-1);
+	}
 
 	wcube = fftx_mddft_QuerySizes ();
 	if (wcube == NULL) {
