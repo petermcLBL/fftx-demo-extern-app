@@ -10,7 +10,7 @@ void GetCmdLineArgumenti(int argc, const char** argv, const char* name, int* rtn
   size_t len = strlen(name);
   for(int i=1; i<argc; i+=2)
     {
-      if(strcmp(argv[i],name) ==0)
+      if(strcmp(argv[i]+1,name) ==0)
         {
          *rtn = atoi(argv[i+1]);
          //  std::cout<<name<<"="<<" "<<*rtn<<std::endl;
