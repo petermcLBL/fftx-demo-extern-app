@@ -9,6 +9,9 @@
 ##  define normal items needed in app
 
 cmake_minimum_required ( VERSION 3.14 )
+
+set(CMAKE_BUILD_TYPE Release  CACHE STRING "Debug, Release, RelWithDebInfo, MinSizeRel")
+
 set ( PROJECT dftbatlib_test )
 
 enable_language ( C )
