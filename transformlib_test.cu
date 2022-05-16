@@ -1,11 +1,12 @@
 #include <stdio.h>
-#include <cufft.h>
-#include <helper_cuda.h>
 
 #include "fftx3.hpp"
 #include "fftx_mddft_public.h"
+#include "device_macros.h"
 
 static int M, N, K;
+
+static bool debug_print = false;
 
 static void buildInputBuffer(double *host_X, double *X)
 {
@@ -18,18 +19,20 @@ static void buildInputBuffer(double *host_X, double *X)
 		}
 	}
 
-	cudaMemcpy(X, host_X, M*N*K*2*sizeof(double), cudaMemcpyHostToDevice);
+	DEVICE_MEM_COPY ( X, host_X, M*N*K*2*sizeof(double), MEM_COPY_HOST_TO_DEVICE);
+	DEVICE_CHECK_ERROR ( DEVICE_GET_LAST_ERROR () );
+	if ( debug_print ) printf ( "buildInputBuffer: Randomized input buffer copied to device memory\n" );
 	return;
 }
 
 static void checkOutputBuffers ( double *Y, double *cufft_Y )
 {
 	printf("cube = [ %d, %d, %d ]\t", M, N, K);
-	cufftDoubleComplex *host_Y       = new cufftDoubleComplex[M*N*K];
-	cufftDoubleComplex *host_cufft_Y = new cufftDoubleComplex[M*N*K];
+	DEVICE_FFT_DOUBLECOMPLEX *host_Y       = new DEVICE_FFT_DOUBLECOMPLEX[M*N*K];
+	DEVICE_FFT_DOUBLECOMPLEX *host_cufft_Y = new DEVICE_FFT_DOUBLECOMPLEX[M*N*K];
 
-	cudaMemcpy(host_Y      ,       Y, M*N*K*sizeof(cufftDoubleComplex), cudaMemcpyDeviceToHost);
-	cudaMemcpy(host_cufft_Y, cufft_Y, M*N*K*sizeof(cufftDoubleComplex), cudaMemcpyDeviceToHost);
+	DEVICE_MEM_COPY ( host_Y      ,       Y, M*N*K*sizeof(DEVICE_FFT_DOUBLECOMPLEX), MEM_COPY_DEVICE_TO_HOST );
+	DEVICE_MEM_COPY ( host_cufft_Y, cufft_Y, M*N*K*sizeof(DEVICE_FFT_DOUBLECOMPLEX), MEM_COPY_DEVICE_TO_HOST );
 
 	bool correct = true;
 	int errCount = 0;
@@ -38,8 +41,8 @@ static void checkOutputBuffers ( double *Y, double *cufft_Y )
 	for (int m = 0; m < 1; m++) {
 		for (int n = 0; n < N; n++) {
 			for (int k = 0; k < K; k++) {
-				cufftDoubleComplex s = host_Y      [k + n*K + m*N*K];
-				cufftDoubleComplex c = host_cufft_Y[k + n*K + m*N*K];
+				DEVICE_FFT_DOUBLECOMPLEX s = host_Y      [k + n*K + m*N*K];
+				DEVICE_FFT_DOUBLECOMPLEX c = host_cufft_Y[k + n*K + m*N*K];
 	    
 				bool elem_correct =
 					(abs(s.x - c.x) < 1e-7) &&
@@ -70,25 +73,46 @@ int main ( int argc, char* argv[] ) {
 
 	fftx::point_t<3> *wcube, curr;
 	int iloop = 0;
+	bool oneshot = false;
 	double *X, *Y;
 	double sym[100];  // dummy symbol
 						  
 	//  cudaEvent_t start, stop, custart, custop;
 
-	//  Currently only runs on GPU - CUDA, check library support this mode
-	if ( fftx_mddft_GetLibraryMode () != LIB_MODE_CUDA ) {
-		printf ( "%s: fftx_mddft doesn't support CUDA, exiting...\n", argv[0] );
+	//  Currently only runs on GPU [CUDA or HIP], check library support this mode
+	if ( fftx_mddft_GetLibraryMode () != LIB_MODE_CUDA && fftx_mddft_GetLibraryMode () != LIB_MODE_HIP ) {
+		printf ( "%s: fftx_mddft doesn't support GPU, exiting...\n", argv[0] );
 		exit (-1);
 	}
 
+	if ( argc > 1 ) {	// size specified, must be of form MMxNNxKK
+		char * foo = argv[1];
+		M = atoi ( foo );
+		while ( * foo != 'x' ) foo++;
+		foo++ ;
+		N = atoi ( foo );
+		while ( * foo != 'x' ) foo++;
+		foo++ ;
+		K = atoi ( foo );
+		oneshot = true;
+		debug_print = true;
+	}
+	
 	wcube = fftx_mddft_QuerySizes ();
 	if (wcube == NULL) {
 		printf ( "Failed to get list of available sizes\n" );
 		exit (-1);
 	}
 
+	if ( oneshot ) {
+		for ( iloop = 0; ; iloop++ ) {
+			if ( wcube[iloop].x[0] == M && wcube[iloop].x[1] == N && wcube[iloop].x[2] == K ) {
+				break;
+			}
+		}
+	}
 	transformTuple_t *tupl;
-	for ( iloop = 0; ; iloop++ ) {
+	for ( /* iloop = 0 */ ; ; iloop++ ) {
 		curr = wcube[iloop];
 		if ( curr.x[0] == 0 && curr.x[1] == 0 && curr.x[2] == 0 ) break;
 
@@ -99,62 +123,78 @@ int main ( int argc, char* argv[] ) {
 		}
 		else {
 			M = curr.x[0], N = curr.x[1], K = curr.x[2];
-			printf ( "M = %d, N = %d, K = %d, malloc sizes = %d * sizeof(double)\n", M, N, K, M*N*K*2 );
+			if ( debug_print ) printf ( "M = %d, N = %d, K = %d, malloc sizes = %d * sizeof(double)\n", M, N, K, M*N*K*2 );
 		
-			cudaMalloc(&X,M*N*K*2*sizeof(double));
-			cudaMalloc(&Y,M*N*K*2*sizeof(double));
+			DEVICE_MALLOC ( &X, M*N*K * 2*sizeof(double) );
+			if ( debug_print ) printf ( "Allocated %lu bytes for device input array X\n", M*N*K*2*sizeof(double) );
+			DEVICE_MALLOC ( &Y, M*N*K * 2*sizeof(double) );
+			if ( debug_print ) printf ( "Allocated %lu bytes for device output array Y\n", M*N*K*2*sizeof(double) );
 
 			double *host_X = new double[M*N*K*2];
 
-			cufftDoubleComplex *cufft_Y; 
-			cudaMalloc(&cufft_Y, M*N*K * sizeof(cufftDoubleComplex));
+			DEVICE_FFT_DOUBLECOMPLEX *cufft_Y; 
+			DEVICE_MALLOC ( &cufft_Y, M*N*K * sizeof(DEVICE_FFT_DOUBLECOMPLEX) );
+			if ( debug_print ) printf ( "Allocated %lu bytes for device cu/roc fft output array\n", M*N*K*sizeof(DEVICE_FFT_DOUBLECOMPLEX) );
 
-			cufftHandle plan;
-			if (cufftPlan3d(&plan, M, N, K,  CUFFT_Z2Z) != CUFFT_SUCCESS) {
-				exit(-1);
+			DEVICE_FFT_HANDLE plan;
+			if ( debug_print ) printf ( "Create plan for cu/roc fft...\n" );
+			bool check_buff = true;
+			DEVICE_FFT_RESULT res;
+			//  DEVICE_FFT_CHECK ( res, "*** Exiting ... Create DEVICE_FFT_PLAN3D" );
+			res = DEVICE_FFT_PLAN3D ( &plan, M, N, K,  DEVICE_FFT_Z2Z );
+			if (res != DEVICE_FFT_SUCCESS ) {
+				printf ( "Create DEVICE_FFT_PLAN3D failed with error code %d ... skip buffer check\n", res );
+				check_buff = false;
 			}
-
+			
 			//  Call the init function
 			( * tupl->initfp )();
-			checkCudaErrors ( cudaGetLastError () );
+			DEVICE_CHECK_ERROR ( DEVICE_GET_LAST_ERROR () );
+			if ( debug_print ) printf ( "Spiral init function called: %s\n", DEVICE_GET_ERROR_STRING ( DEVICE_GET_LAST_ERROR () ) );
  
 			// set up data in input buffer and run the transform
 			buildInputBuffer(host_X, X);
 
+			if ( debug_print ) printf ( "Loop the Spiral run function 100 times...\n" );
 			for ( int kk = 0; kk < 100; kk++ ) {
 				//  try the run function
 
 				( * tupl->runfp ) ( Y, X, sym );
-				checkCudaErrors ( cudaGetLastError () );
+				DEVICE_CHECK_ERROR ( DEVICE_GET_LAST_ERROR () );
 			}
 			
 			// Tear down / cleanup
 			( * tupl->destroyfp ) ();				//  destroy_mddft3d();
-			checkCudaErrors ( cudaGetLastError () );
+			DEVICE_CHECK_ERROR ( DEVICE_GET_LAST_ERROR () );
+			if ( debug_print ) printf ( "Spiral destroy function called: %s\n", DEVICE_GET_ERROR_STRING ( DEVICE_GET_LAST_ERROR () ) );
 
-			if (cufftExecZ2Z(
-					plan,
-					(cufftDoubleComplex *) X,
-					(cufftDoubleComplex *) cufft_Y,
-					CUFFT_FORWARD
-					) != CUFFT_SUCCESS) {
-				printf("cufftExecZ2Z launch failed\n");
+			if ( check_buff ) {
+				if ( DEVICE_FFT_EXECZ2Z (
+						 plan,
+						 (DEVICE_FFT_DOUBLECOMPLEX *) X,
+						 (DEVICE_FFT_DOUBLECOMPLEX *) cufft_Y,
+						 DEVICE_FFT_FORWARD
+						 ) != DEVICE_FFT_SUCCESS) {
+					printf("DEVICE_FFT_EXECZ2Z launch failed\n");
+					exit(-1);
+				}
+			}
+
+			DEVICE_SYNCHRONIZE();
+			if ( DEVICE_GET_LAST_ERROR () != DEVICE_SUCCESS ) {
+				printf("DEVICE_FFT_EXECZ2Z failed\n");
 				exit(-1);
 			}
 
-			cudaDeviceSynchronize();
-			if (cudaGetLastError() != cudaSuccess) {
-				printf("cufftExecZ2Z failed\n");
-				exit(-1);
-			}
-
-			//  check cufft and CUDA got same results
-			checkOutputBuffers ( Y, (double *)cufft_Y );
+			//  check cufft/rocfft and FFTX got same results
+			if ( check_buff ) checkOutputBuffers ( Y, (double *)cufft_Y );
 			
-			cudaFree ( X );
-			cudaFree ( Y );
-			cudaFree ( cufft_Y );
+			DEVICE_FREE ( X );
+			DEVICE_FREE ( Y );
+			DEVICE_FREE ( cufft_Y );
 			delete[] host_X;
+
+			if ( oneshot ) break;
 		}
 	}
 
