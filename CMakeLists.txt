@@ -17,7 +17,12 @@ set ( PROJECT dftbatlib_test )
 enable_language ( C )
 enable_language ( CXX )
 
-set ( CMAKE_CUDA_ARCHITECTURES 60 61 62 70 72 75 80 )
+if ( WIN32 )
+    list ( APPEND ADDL_COMPILE_FLAGS -D_USE_MATH_DEFINES )
+    set ( CMAKE_CUDA_ARCHITECTURES 52 )		##  60 61 62 70 72 75 80 )
+else ()
+    set ( CMAKE_CUDA_ARCHITECTURES 60 61 62 70 72 75 80 )
+endif ()
 
 if ( APPLE )
     ##  Check if we're on Apple/MAC
