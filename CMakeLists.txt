@@ -82,6 +82,7 @@ endif ()
 
 set ( XFORMLIB_test transformlib_test )
 set ( POISSON1_TEST poissonTest )
+set ( PERF_FRAME_TEST perf_test_driver )
 
 ##  Set C standard 11
 set ( CMAKE_C_STANDARD 11 )
@@ -162,6 +163,12 @@ if ( ${CUDAToolkit_FOUND} )
     set_property        ( TARGET ${XFORMLIB_test} PROPERTY CUDA_RESOLVE_DEVICE_SYMBOLS ON )
     target_link_libraries      ( ${XFORMLIB_test} ${LIBS_FOR_CUDA} )
     list ( APPEND _targets       ${XFORMLIB_test} )
+
+    add_executable             ( ${PERF_FRAME_TEST} ${PERF_FRAME_TEST}.cu )
+    target_compile_options     ( ${PERF_FRAME_TEST} PRIVATE ${CUDA_COMPILE_FLAGS} )
+    set_property        ( TARGET ${PERF_FRAME_TEST} PROPERTY CUDA_RESOLVE_DEVICE_SYMBOLS ON )
+    target_link_libraries      ( ${PERF_FRAME_TEST} ${LIBS_FOR_CUDA} )
+    list ( APPEND _targets       ${PERF_FRAME_TEST} )
 endif ()
 
 if ( ${hip_FOUND} )
@@ -170,6 +177,12 @@ if ( ${hip_FOUND} )
     target_link_directories     ( ${XFORMLIB_test} PRIVATE $ENV{ROCM_PATH}/lib )
     target_link_libraries       ( ${XFORMLIB_test} ${LIBS_FOR_HIP} )
     list ( APPEND _targets        ${XFORMLIB_test} )
+
+    add_executable              ( ${PERF_FRAME_TEST} ${PERF_FRAME_TEST}.cu )
+    set_source_files_properties ( ${PERF_FRAME_TEST}.cu PROPERTIES LANGUAGE CXX )
+    target_link_directories     ( ${PERF_FRAME_TEST} PRIVATE $ENV{ROCM_PATH}/lib )
+    target_link_libraries       ( ${PERF_FRAME_TEST} ${LIBS_FOR_HIP} )
+    list ( APPEND _targets        ${PERF_FRAME_TEST} )
 endif ()
 
 foreach ( _targ ${_targets} )
