@@ -2,7 +2,7 @@
 
 #include "fftx3.hpp"
 #include "fftx_mddft_public.h"
-#include "fftx_imddft_public.h"
+#include "fftx_mdprdft_public.h"
 #include "device_macros.h"
 
 #include <stdlib.h>
@@ -20,7 +20,7 @@ static char * generateFileName ( const char *type )
   // output ==> spiral output data;
   // roc ==> rocFFT output data
   static char fileNameBuff[100];
-  sprintf ( fileNameBuff, "mddft3d-%s-%dx%dx%d.dat", type, M, N, K );
+  sprintf ( fileNameBuff, "mdprdft3d-%s-%dx%dx%d.dat", type, M, N, K );
   return fileNameBuff;
 }
 
@@ -37,7 +37,8 @@ static void writeBufferToFile ( const char *type, double *datap )
         {
           for ( int kk = 0; kk < K; kk++ )
             {
-              fprintf ( fhandle, "FloatString(\"%.12g\"), FloatString(\"%.12g\"), ", 
+              // Output is complex
+              fprintf ( fhandle, "FloatString(\"%.12g\"), FloatString(\"%.12g\"), ",
                         datap[(kk + nn*K + mm*N*K)*2 + 0],
                         datap[(kk + nn*K + mm*N*K)*2 + 1] );
               if ( kk > 0 && kk % 8 == 0 )
@@ -63,17 +64,20 @@ static void buildInputBuffer ( double *host_X, double *X, int genData )
             {
               for (int k = 0; k < K; k++)
                 {
-                  host_X[(k + n*K + m*N*K)*2 + 0] =
+                  // Input is real.
+                  host_X[k + n*K + m*N*K] =
                     1 - ((double) rand()) / (double) (RAND_MAX/2);
-                  host_X[(k + n*K + m*N*K)*2 + 1] =
-                    1 - ((double) rand()) / (double) (RAND_MAX/2);
+                  // host_X[(k + n*K + m*N*K)*2 + 0] =
+                  //   1 - ((double) rand()) / (double) (RAND_MAX/2);
+                  // host_X[(k + n*K + m*N*K)*2 + 1] =
+                  //   1 - ((double) rand()) / (double) (RAND_MAX/2);
                 }
             }
         }
     }
 
   DEVICE_MEM_COPY ( X, host_X,
-                    (M * N * K * 2 * sizeof(double)),
+                    (M * N * K * sizeof(double)), // If complex, 2 *
                     MEM_COPY_HOST_TO_DEVICE);
   DEVICE_CHECK_ERROR ( DEVICE_GET_LAST_ERROR () );
   return;
@@ -109,9 +113,9 @@ static void checkOutputBuffers ( double *Y, double *cufft_Y )
                 ( abs(s.x - c.x) < 1e-7 ) &&
                 ( abs(s.y - c.y) < 1e-7 );
               maxdelta = maxdelta < (double)(abs(s.x -c.x)) ?
-                                    (double)(abs(s.x -c.x)) : maxdelta ;
+                (double)(abs(s.x -c.x)) : maxdelta ;
               maxdelta = maxdelta < (double)(abs(s.y -c.y)) ?
-                                    (double)(abs(s.y -c.y)) : maxdelta ;
+                (double)(abs(s.y -c.y)) : maxdelta ;
 
               correct &= elem_correct;
               //  if (!elem_correct && errCount < 10) {
@@ -200,7 +204,7 @@ int main( int argc, char** argv)
 						  
   fftx::point_t<3> *wcube, curr;
 
-  wcube = fftx_mddft_QuerySizes ();
+  wcube = fftx_mdprdft_QuerySizes ();
   if (wcube == NULL)
     {
       printf ( "%s: Failed to get list of available sizes\n", argv[0] );
@@ -253,7 +257,7 @@ int main( int argc, char** argv)
 
       printf ( "Cube size { %d, %d, %d } is available\n",
                curr.x[0], curr.x[1], curr.x[2]);
-      tupl = fftx_mddft_Tuple ( wcube[iloop] );
+      tupl = fftx_mdprdft_Tuple ( wcube[iloop] );
       if ( tupl == NULL )
         {
           printf ( "Failed to get tuple for cube { %d, %d, %d }\n",
@@ -262,13 +266,12 @@ int main( int argc, char** argv)
       else
         {
           M = curr.x[0], N = curr.x[1], K = curr.x[2];
-          DEVICE_MALLOC ( &X, ( M * N * K * 2 * sizeof(double) ) );
+          DEVICE_MALLOC ( &X, ( M * N * K * sizeof(double) ) ); // complex has 2 *
           DEVICE_MALLOC ( &Y, ( M * N * K * 2 * sizeof(double) ) );
 
-          double *host_X = new double[ M * N * K * 2 ];
+          double *host_X = new double[ M * N * K ]; // complex has 2 *
           DEVICE_FFT_DOUBLECOMPLEX *cufft_Y; 
-          DEVICE_MALLOC ( &cufft_Y,
-                          ( M * N * K * sizeof(DEVICE_FFT_DOUBLECOMPLEX) ) );
+          DEVICE_MALLOC ( &cufft_Y, ( M * N * K * sizeof(DEVICE_FFT_DOUBLECOMPLEX) ) );
 
           //  want to run and time: 1st iteration; 2nd iteration; then N iterations
           //  Report 1st time, 2nd time, and average of N further iterations
@@ -278,12 +281,11 @@ int main( int argc, char** argv)
 
           DEVICE_FFT_HANDLE plan;
           DEVICE_FFT_RESULT res;
-          res = DEVICE_FFT_PLAN3D ( &plan, M, N, K, DEVICE_FFT_Z2Z );
-          if ( res != DEVICE_FFT_SUCCESS )
-            {
-              printf ( "Create DEVICE_FFT_PLAN3D failed with error code %d ... skip buffer check\n", res );
-              check_buff = false;
-            }
+          res = DEVICE_FFT_PLAN3D ( &plan, M, N, K, DEVICE_FFT_D2Z );
+          if ( res != DEVICE_FFT_SUCCESS ) {
+            printf ( "Create DEVICE_FFT_PLAN3D failed with error code %d ... skip buffer check\n", res );
+            check_buff = false;
+          }
 
           //  Call the transform init function
           ( * tupl->initfp )();
@@ -325,13 +327,13 @@ int main( int argc, char** argv)
               for ( int ii = 0; ii < iters; ii++ )
                 {
                   DEVICE_EVENT_RECORD ( custart );
-                  res = DEVICE_FFT_EXECZ2Z ( plan,
-                                             (DEVICE_FFT_DOUBLECOMPLEX *) X,
-                                             (DEVICE_FFT_DOUBLECOMPLEX *) cufft_Y,
-                                             DEVICE_FFT_FORWARD );
+                  res = DEVICE_FFT_EXECD2Z ( plan,
+                                             (DEVICE_FFT_DOUBLEREAL *) X,
+                                             (DEVICE_FFT_DOUBLECOMPLEX *) cufft_Y );
+                  // C2C has additional argument DEVICE_FFT_FORWARD
                   if ( res != DEVICE_FFT_SUCCESS)
                     {
-                      printf ( "Launch DEVICE_FFT_EXECZ2Z failed with error code %d ... skip buffer check\n", res );
+                      printf ( "Launch DEVICE_FFT_EXECD2Z failed with error code %d ... skip buffer check\n", res );
                       check_buff = false;
                       break;
                     }
