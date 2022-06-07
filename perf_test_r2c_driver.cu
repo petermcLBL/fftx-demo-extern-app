@@ -1,7 +1,6 @@
 #include <stdio.h>
 
 #include "fftx3.hpp"
-#include "fftx_mddft_public.h"
 #include "fftx_mdprdft_public.h"
 #include "device_macros.h"
 
@@ -153,10 +152,10 @@ int main( int argc, char** argv)
   int iters = NUM_ITERS + 10;
 
   //  Test is to time on a GPU [CUDA or HIP], check library support this mode
-  if ( fftx_mddft_GetLibraryMode () != LIB_MODE_CUDA &&
-       fftx_mddft_GetLibraryMode () != LIB_MODE_HIP )
+  if ( fftx_mdprdft_GetLibraryMode () != LIB_MODE_CUDA &&
+       fftx_mdprdft_GetLibraryMode () != LIB_MODE_HIP )
     {
-      printf ( "%s: fftx_mddft library doesn't support GPU, exiting...\n",
+      printf ( "%s: fftx_mdprdft library doesn't support GPU, exiting...\n",
                argv[0] );
       exit (-1);
     }
