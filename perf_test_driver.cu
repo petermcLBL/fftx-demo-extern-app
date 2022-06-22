@@ -1,12 +1,18 @@
 #include <stdio.h>
 
 #include "fftx3.hpp"
-#include "fftx_mddft_public.h"
-#include "fftx_imddft_public.h"
+#include "fftx_mddft_gpu_public.h"
+#include "fftx_imddft_gpu_public.h"
 #include "device_macros.h"
 
 #include <stdlib.h>
 #include <string.h>
+
+#if defined(FFTX_HIP)
+#define GPU_STR "rocfft"
+#else
+#define GPU_STR "cufft"
+#endif
 
 static int M, N, K;
 static bool writefiles = false;
@@ -102,7 +108,7 @@ static void checkOutputBuffers ( double *Y, double *cufft_Y )
 
 	if ( writefiles ) {
 		writeBufferToFile ( (const char *)"spiral-out", (double *)host_Y );
-		writeBufferToFile ( (const char *)"rocFFT",     (double *)host_cufft_Y );
+		writeBufferToFile ( (const char *)GPU_STR,      (double *)host_cufft_Y );
 	}
 	delete[] host_Y;
 	delete[] host_cufft_Y;
@@ -119,12 +125,7 @@ int main( int argc, char** argv) {
 	bool oneshot = false;
 	int iters = NUM_ITERS + 10;
 
-	//  Test is to time on a GPU [CUDA or HIP], check library support this mode
-	if ( fftx_mddft_GetLibraryMode () != LIB_MODE_CUDA && fftx_mddft_GetLibraryMode () != LIB_MODE_HIP ) {
-		printf ( "%s: fftx_mddft library doesn't support GPU, exiting...\n", argv[0] );
-		exit (-1);
-	}
-
+	//  Test is to time on a GPU [CUDA or HIP]
 	printf ( "Usage: %s: [ iterations ] [ size: MMxNNxKK ] [ writefiles ]\n", argv[0] );
 	if ( argc > 1 ) {
 		NUM_ITERS = atoi ( argv[1] );
@@ -289,18 +290,18 @@ int main( int argc, char** argv) {
 			if ( check_buff ) checkOutputBuffers ( Y, (double *)cufft_Y );
 
 			//  printf("cube = [ %d, %d, %d ]\t\t ##PICKME## \n", M, N, K);
-			printf("%f\tms (SPIRAL) vs\t%f\tms (hipfft),\t\tFIRST iteration\t##PICKME## \n",
-				   milliseconds[0], cumilliseconds[0]);
-			printf("%f\tms (SPIRAL) vs\t%f\tms (hipfft),\t\tSECOND iteration\t##PICKME## \n",
-				   milliseconds[1], cumilliseconds[1]);
+			printf("%f\tms (SPIRAL) vs\t%f\tms (%s),\t\tFIRST iteration\t##PICKME## \n",
+				   milliseconds[0], cumilliseconds[0], GPU_STR);
+			printf("%f\tms (SPIRAL) vs\t%f\tms (%s),\t\tSECOND iteration\t##PICKME## \n",
+				   milliseconds[1], cumilliseconds[1], GPU_STR);
 
 			float cumulSpiral = 0.0, cumulHip = 0.0;
 			for ( int ii = 10; ii < iters; ii++ ) {
 				cumulSpiral += milliseconds[ii];
 				cumulHip    += cumilliseconds[ii];
 			} 
-			printf("%f\tms (SPIRAL) vs\t%f\tms (hipfft), AVERAGE over %d iterations (range: 11 - %d) ##PICKME## \n",
-				   cumulSpiral / NUM_ITERS, cumulHip / NUM_ITERS, NUM_ITERS, (10 + NUM_ITERS) );
+			printf("%f\tms (SPIRAL) vs\t%f\tms (%s), AVERAGE over %d iterations (range: 11 - %d) ##PICKME## \n",
+				   cumulSpiral / NUM_ITERS, cumulHip / NUM_ITERS, GPU_STR, NUM_ITERS, (10 + NUM_ITERS) );
 
 			DEVICE_FREE ( X );
 			DEVICE_FREE ( Y );

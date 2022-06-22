@@ -1,7 +1,7 @@
 #include <stdio.h>
 
 #include "fftx3.hpp"
-#include "fftx_mddft_public.h"
+#include "fftx_mddft_gpu_public.h"
 #include "device_macros.h"
 
 static int M, N, K;
@@ -78,12 +78,6 @@ int main ( int argc, char* argv[] ) {
 	double sym[100];  // dummy symbol
 						  
 	//  cudaEvent_t start, stop, custart, custop;
-
-	//  Currently only runs on GPU [CUDA or HIP], check library support this mode
-	if ( fftx_mddft_GetLibraryMode () != LIB_MODE_CUDA && fftx_mddft_GetLibraryMode () != LIB_MODE_HIP ) {
-		printf ( "%s: fftx_mddft doesn't support GPU, exiting...\n", argv[0] );
-		exit (-1);
-	}
 
 	if ( argc > 1 ) {	// size specified, must be of form MMxNNxKK
 		char * foo = argv[1];
@@ -164,7 +158,7 @@ int main ( int argc, char* argv[] ) {
 			}
 			
 			// Tear down / cleanup
-			( * tupl->destroyfp ) ();				//  destroy_mddft3d();
+			( * tupl->destroyfp ) ();
 			DEVICE_CHECK_ERROR ( DEVICE_GET_LAST_ERROR () );
 			if ( debug_print ) printf ( "Spiral destroy function called: %s\n", DEVICE_GET_ERROR_STRING ( DEVICE_GET_LAST_ERROR () ) );
 
