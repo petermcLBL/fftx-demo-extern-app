@@ -2,6 +2,7 @@
 
 #include "fftx3.hpp"
 #include "fftx_mddft_gpu_public.h"
+#include "fftx_imddft_gpu_public.h"
 #include "device_macros.h"
 
 static int M, N, K;
@@ -69,6 +70,7 @@ static void checkOutputBuffers ( double *Y, double *cufft_Y )
 	return;
 }
 
+
 int main ( int argc, char* argv[] ) {
 
 	fftx::point_t<3> *wcube, curr;
@@ -79,7 +81,22 @@ int main ( int argc, char* argv[] ) {
 						  
 	//  cudaEvent_t start, stop, custart, custop;
 
-	if ( argc > 1 ) {	// size specified, must be of form MMxNNxKK
+	if ( argc > 1 ) {
+		if ( strcmp( argv[1], "-m" ) == 0 ) {
+			//  just print the metadata
+			char *meta = fftx_mddft_gpu_GetMetaData ();
+			if ( meta == NULL ) {
+				printf ( "Failed to get the meta data from the library\n" );
+			}
+			else {
+				printf ( "Got meta data from the library:\n%s\n", meta );
+				free ( meta );
+			}
+			exit(0);
+		}
+	
+
+        // size specified, must be of form MMxNNxKK
 		char * foo = argv[1];
 		M = atoi ( foo );
 		while ( * foo != 'x' ) foo++;
@@ -89,9 +106,9 @@ int main ( int argc, char* argv[] ) {
 		foo++ ;
 		K = atoi ( foo );
 		oneshot = true;
-		debug_print = true;
+		//  debug_print = true;
 	}
-	
+
 	wcube = fftx_mddft_QuerySizes ();
 	if (wcube == NULL) {
 		printf ( "Failed to get list of available sizes\n" );

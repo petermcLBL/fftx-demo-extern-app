@@ -192,9 +192,9 @@ int main( int argc, char** argv) {
 	DEVICE_EVENT_CREATE ( &custart );
 	DEVICE_EVENT_CREATE ( &custop );
 
-	double *X, *Y;
+	double *X, *Y, *IX;
 	double sym[100];  // dummy symbol
-	transformTuple_t *tupl;
+	transformTuple_t *tupl, *tupli;
 
 	for ( /* iloop is initialized */ ; ; iloop++ ) {
 		curr = wcube[iloop];
@@ -211,7 +211,7 @@ int main( int argc, char** argv) {
 			DEVICE_MALLOC ( &Y, ( M * N * K * 2 * sizeof(double) ) );
 
 			double *host_X = new double[ M * N * K * 2 ];
-			DEVICE_FFT_DOUBLECOMPLEX *cufft_Y; 
+			DEVICE_FFT_DOUBLECOMPLEX *cufft_Y, *cufft_IX; 
 			DEVICE_MALLOC ( &cufft_Y, ( M * N * K * sizeof(DEVICE_FFT_DOUBLECOMPLEX) ) );
 
 			//  want to run and time: 1st iteration; 2nd iteration; then N iterations
@@ -303,6 +303,83 @@ int main( int argc, char** argv) {
 			printf("%f\tms (SPIRAL) vs\t%f\tms (%s), AVERAGE over %d iterations (range: 11 - %d) ##PICKME## \n",
 				   cumulSpiral / NUM_ITERS, cumulHip / NUM_ITERS, GPU_STR, NUM_ITERS, (10 + NUM_ITERS) );
 
+			//  Setup and call the inverse transform: this time (for spiral) Y is the
+			//  input and the result should match X.  Y is the input to the device
+			//  FFT, again the output should match X
+
+			tupli = fftx_imddft_Tuple ( wcube[iloop] );
+			if ( tupli == NULL ) {
+				printf ( "Failed to get tuple for cube { %d, %d, %d } from inverse library\n",
+						 curr.x[0], curr.x[1], curr.x[2]);
+			}
+			else {
+				DEVICE_MALLOC ( &IX, ( M * N * K * 2 * sizeof(double) ) );
+				DEVICE_MALLOC ( &cufft_IX, ( M * N * K * sizeof(DEVICE_FFT_DOUBLECOMPLEX) ) );
+
+				for ( int ii = 0; ii < iters; ii++ ) {
+					milliseconds[ii] = 0.0;
+					cumilliseconds[ii] = 0.0;
+				}
+
+				//  Call the transform init function
+				( * tupli->initfp )();
+				DEVICE_CHECK_ERROR ( DEVICE_GET_LAST_ERROR () );
+
+				for ( int ii = 0; ii < iters; ii++ ) {
+					//  Call the main transform function
+					DEVICE_EVENT_RECORD ( start );
+					( * tupli->runfp ) ( IX, Y, sym );
+					DEVICE_EVENT_RECORD ( stop );
+					DEVICE_CHECK_ERROR ( DEVICE_GET_LAST_ERROR () );
+		
+					DEVICE_EVENT_SYNCHRONIZE ( stop );
+					DEVICE_EVENT_ELAPSED_TIME ( &milliseconds[ii], start, stop );
+				}
+				//  Call the destroy function
+				( * tupli->destroyfp )();
+				DEVICE_CHECK_ERROR ( DEVICE_GET_LAST_ERROR () );
+
+				if ( check_buff ) {
+					for ( int ii = 0; ii < iters; ii++ ) {
+						DEVICE_EVENT_RECORD ( custart );
+						res = DEVICE_FFT_EXECZ2Z ( plan,
+												   (DEVICE_FFT_DOUBLECOMPLEX *) Y,
+												   (DEVICE_FFT_DOUBLECOMPLEX *) cufft_IX,
+												   DEVICE_FFT_INVERSE );
+						if ( res != DEVICE_FFT_SUCCESS) {
+							printf ( "Launch DEVICE_FFT_EXECZ2Z failed with error code %d ... skip buffer check\n", res );
+							check_buff = false;
+							break;
+						}
+						DEVICE_EVENT_RECORD ( custop );
+						DEVICE_EVENT_SYNCHRONIZE ( custop );
+						DEVICE_EVENT_ELAPSED_TIME ( &cumilliseconds[ii], custart, custop );
+					}
+				}
+				DEVICE_SYNCHRONIZE ();
+
+				//  check cufft/rocfft and FFTX got same results
+				if ( check_buff ) checkOutputBuffers ( IX, (double *)cufft_IX );
+				//  checkOutputBuffers ( IX, X );
+
+				//  printf("cube = [ %d, %d, %d ]\t\t ##PICKME## \n", M, N, K);
+				printf("%f\tms (SPIRAL) vs\t%f\tms (%s),\t\tFIRST iteration\t##PICKME## \n",
+					   milliseconds[0], cumilliseconds[0], GPU_STR);
+				printf("%f\tms (SPIRAL) vs\t%f\tms (%s),\t\tSECOND iteration\t##PICKME## \n",
+					   milliseconds[1], cumilliseconds[1], GPU_STR);
+
+				cumulSpiral = 0.0, cumulHip = 0.0;
+				for ( int ii = 10; ii < iters; ii++ ) {
+					cumulSpiral += milliseconds[ii];
+					cumulHip    += cumilliseconds[ii];
+				} 
+				printf("%f\tms (SPIRAL) vs\t%f\tms (%s), AVERAGE over %d iterations (range: 11 - %d) ##PICKME## \n",
+					   cumulSpiral / NUM_ITERS, cumulHip / NUM_ITERS, GPU_STR, NUM_ITERS, (10 + NUM_ITERS) );
+
+				DEVICE_FREE ( IX );
+				DEVICE_FREE ( cufft_IX );
+			}
+			
 			DEVICE_FREE ( X );
 			DEVICE_FREE ( Y );
 			DEVICE_FREE ( cufft_Y );
