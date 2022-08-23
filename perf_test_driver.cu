@@ -9,6 +9,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 
 #if defined(FFTX_HIP)
 #define GPU_STR "rocfft"
@@ -17,7 +18,6 @@
 #endif
 
 static int M, N, K, K_adj;
-static bool writefiles = false;
 
 //  generate file name
 
@@ -74,12 +74,15 @@ static void buildInputBuffer ( double *host_X, double *X, bool genData, bool gen
 		}
 	}
 
-	int nbytes = M * N * KK * sizeof(double);
+	unsigned int nbytes = M * N * KK * sizeof(double);
 	if ( genComplex ) nbytes *= 2;
 	DEVICE_MEM_COPY ( X, host_X, nbytes, MEM_COPY_HOST_TO_DEVICE);
 	DEVICE_CHECK_ERROR ( DEVICE_GET_LAST_ERROR () );
 	return;
 }
+
+
+static bool writefiles = false;
 
 static void checkOutputBuffers ( double *Y, double *cufft_Y, bool isR2C, bool xfmdir )
 {
@@ -154,6 +157,7 @@ static void checkOutputBuffers ( double *Y, double *cufft_Y, bool isR2C, bool xf
 	return;
 }
 
+
 static int NUM_ITERS = 100;
 
 static void	run_transform ( fftx::point_t<3> curr, transformTuple_t *tupl, bool isR2C, bool xfmdir )
@@ -206,6 +210,7 @@ static void	run_transform ( fftx::point_t<3> curr, transformTuple_t *tupl, bool 
 	DEVICE_FFT_HANDLE plan;
 	DEVICE_FFT_RESULT res;
 	DEVICE_FFT_TYPE   xfmtype = ( !isR2C ) ? DEVICE_FFT_Z2Z : ( xfmdir ) ? DEVICE_FFT_D2Z : DEVICE_FFT_Z2D ;
+	
 	res = DEVICE_FFT_PLAN3D ( &plan, M, N, K, xfmtype );
 	if ( res != DEVICE_FFT_SUCCESS ) {
 		printf ( "Create DEVICE_FFT_PLAN3D failed with error code %d ... skip buffer check\n", res );
@@ -219,9 +224,26 @@ static void	run_transform ( fftx::point_t<3> curr, transformTuple_t *tupl, bool 
 	// set up data in input buffer: gen data = true,
 	// gen complex = true if !isR2C or (isR2C and inverse direction); false otherwise
 	// use full K dim = false when (isR2C and inverse direction); true otherwise
-	buildInputBuffer ( host_X, X, true,
-					   ( !isR2C || ( isR2C && !xfmdir ) ),
-					   ! ( isR2C && !xfmdir ) );
+
+	if ( isR2C && !xfmdir ) {
+		//  real FFT, inverse direction.  To guarantee hermitian symmetry (required for
+		//  rocfft output to be valid) we want to get the output from a forward real FFT
+		//  and use that as input.  For inverse fft we've allocated the output buffer Y at
+		//  the size needed for a real input array which can be used to generate the
+		//  complex output we'll use as input, so flip X & Y in the run transform call below.
+		double *herm_X;
+		herm_X = new double[ M * N * K ];
+		buildInputBuffer ( herm_X, Y, true, false, true );
+		( * tupl->runfp ) ( X, Y, sym );
+		DEVICE_MEM_COPY ( host_X, X, (  M * N * K_adj * 2 ) * sizeof(double), MEM_COPY_DEVICE_TO_HOST );
+		buildInputBuffer ( host_X, X, false, ( !isR2C || ( isR2C && !xfmdir ) ), ! ( isR2C && !xfmdir ) );
+		delete[] herm_X;
+	}
+	else {
+		buildInputBuffer ( host_X, X, true,
+						   ( !isR2C || ( isR2C && !xfmdir ) ),
+						   ! ( isR2C && !xfmdir ) );
+	}
 	/* if ( writefiles ) { */
 	/* 	//  Currently, only for MDDFT, i.e., complex to complex */
 	/* 	printf ( "Write input buffer to a file..." ); */
@@ -282,8 +304,9 @@ static void	run_transform ( fftx::point_t<3> curr, transformTuple_t *tupl, bool 
 			DEVICE_EVENT_SYNCHRONIZE ( custop );
 			DEVICE_EVENT_ELAPSED_TIME ( &cumilliseconds[ii], custart, custop );
 
-			if ( isR2C && !xfmdir ) {
-				//  Input buffer is over-written / corrupted when doing IMDPRDFT  
+			//  if ( isR2C && !xfmdir ) {
+			if ( isR2C  ) {
+				//  Input buffer is over-written / corrupted when doing IMDPRDFT (CUDA); both fwd & inv (HIP) 
 #ifdef USE_DIFF_DATA
 				buildInputBuffer ( host_X, X, true,
 								   ( !isR2C || ( isR2C && !xfmdir ) ),
@@ -326,52 +349,81 @@ static void	run_transform ( fftx::point_t<3> curr, transformTuple_t *tupl, bool 
 }
 
 
-int main( int argc, char** argv) {
+int main( int argc, char** argv)
+{
+	//  Test is to time on a GPU [CUDA or HIP]
+	bool oneshot = false;
+	bool runmddft = true, runimddft = true, runmdprdft = true, runimdprdft = true;
+	char *prog = argv[0];
+
+	int baz = 0;
+	while ( argc > 1 && argv[1][0] == '-' ) {
+		switch ( argv[1][1] ) {
+		case 'i':
+			argv++, argc--;
+			NUM_ITERS = atoi ( argv[1] );
+			break;
+
+		case 'w': 					//  write files option
+			writefiles = true;
+			break;
+
+		case 's':
+			argv++, argc--;
+			M = atoi ( argv[1] );
+			while ( argv[1][baz] != 'x' ) baz++;
+			baz++ ;
+			N = atoi ( & argv[1][baz] );
+			while ( argv[1][baz] != 'x' ) baz++;
+			baz++ ;
+			K = atoi ( & argv[1][baz] );
+			oneshot = true;
+			break;
+
+		case 't':
+			argv++, argc--;
+			runmddft = false, runimddft = false, runmdprdft = false, runimdprdft = false;
+			if ( strcasecmp ( argv[1], "mddft" ) == 0 )    runmddft    = true;
+			if ( strcasecmp ( argv[1], "imddft" ) == 0 )   runimddft   = true;
+			if ( strcasecmp ( argv[1], "mdprdft" ) == 0 )  runmdprdft  = true;
+			if ( strcasecmp ( argv[1], "imdprdft" ) == 0 ) runimdprdft = true;
+			break;
+
+		case 'h':
+			printf ( "Usage: %s: [ -i iterations ] [ -s MMxNNxKK ] [ -w[ritefiles] ] [ -t transform ]\n", argv[0] );
+			printf ( "One -t option is permitted (name is case insensitive): -t { mddft | imddft | mdprdft | imdprdft\n" );
+			printf ( "Writefiles is only permitted when a single size is specified\n" ); 
+			exit (0);
+
+		default:
+			printf ( "%s: unknown argument: %s ... ignored\n", prog, argv[1] );
+		}
+		argv++, argc--;
+	}
 
 	int iloop = 0;
-	bool oneshot = false;
 	int iters = NUM_ITERS + 10;
 
-	//  Test is to time on a GPU [CUDA or HIP]
-	printf ( "Usage: %s: [ iterations ] [ size: MMxNNxKK ] [ writefiles ]\n", argv[0] );
-	if ( argc > 1 ) {
-		NUM_ITERS = atoi ( argv[1] );
-		iters = NUM_ITERS + 10;
-		printf ( "%s: Measure %d iterations, ", argv[0], iters );
-		
-		if ( argc > 2 ) {
-			char * foo = argv[2];
-			M = atoi ( foo );
-			while ( * foo != 'x' ) foo++;
-			foo++ ;
-			N = atoi ( foo );
-			while ( * foo != 'x' ) foo++;
-			foo++ ;
-			K = atoi ( foo );
-			oneshot = true;
-			printf ( "Run size: %dx%dx%d, ", M, N, K );
-			
-			if ( argc > 3 ) {
-				//  Only write files when a specified [single] size is used.  Write data to
-				//  files -- spiral input data, spiral output data, and rocFFT/cuFFT output
-				writefiles = true;
-			}
-			printf ( "%s data files\n", (writefiles) ? "WRITE" : "DO NOT write" );
-		}
-		else {
-			printf ( "Run all sizes found in library, " );
-			printf ( "%s data files\n", (writefiles) ? "WRITE" : "DO NOT write" );
-		}
+	char buf[100];
+	if ( oneshot ) sprintf ( buf, "for size: %dx%dx%d, ", M, N, K );
+	if ( !oneshot ) writefiles = false;
+	printf ( "%s: Measure %d iterations, %s", prog, iters, (oneshot) ? buf : "for all sizes, " );
+	if ( runmddft && runimddft && runmdprdft && runimdprdft ) {
+		sprintf ( buf, "for all transforms, " );
 	}
 	else {
-		printf ( "%s: Measure %d iterations for all sizes found in the library\n", argv[0], iters );
+		if ( runmddft ) sprintf ( buf, "for transform: MDDFT, " );
+		if ( runimddft ) sprintf ( buf, "for transform: IMDDFT, " );
+		if ( runmdprdft ) sprintf ( buf, "for transform: MDPRDFT, " );
+		if ( runimdprdft ) sprintf ( buf, "for transform: IMDPRDFT, " );
 	}
-						  
+	printf ( "%s%s data files\n", buf, (writefiles) ? "WRITE" : "DO NOT write" );
+	
 	fftx::point_t<3> *wcube, curr;
 
 	wcube = fftx_mddft_QuerySizes ();
 	if (wcube == NULL) {
-		printf ( "%s: Failed to get list of available sizes\n", argv[0] );
+		printf ( "%s: Failed to get list of available sizes from MDDFT library\n", prog );
 		exit (-1);
 	}
 
@@ -379,7 +431,7 @@ int main( int argc, char** argv) {
 		for ( iloop = 0; ; iloop++ ) {
 			if ( wcube[iloop].x[0] == 0 && wcube[iloop].x[1] == 0 && wcube[iloop].x[2] == 0 ) {
 				//  requested size is not in library, print message & exit
-				printf ( "%s: Cube { %d, %d, %d } not found in library ... exiting\n", argv[0], M, N, K );
+				printf ( "%s: Cube { %d, %d, %d } not found in library ... exiting\n", prog, M, N, K );
 				exit (-1);
 			}
 			if ( wcube[iloop].x[0] == M && wcube[iloop].x[1] == N && wcube[iloop].x[2] == K ) {
@@ -404,24 +456,24 @@ int main( int argc, char** argv) {
 		tupl  = fftx_mddft_Tuple ( wcube[iloop] );
 		tupli = fftx_imddft_Tuple ( wcube[iloop] );
 		if ( tupl == NULL || tupli == NULL ) {
-			printf ( "Failed to get tuples for cube { %d, %d, %d }\n", curr.x[0], curr.x[1], curr.x[2]);
+			printf ( "Failed to get tuples (MDDFT/IMDDFT) for cube { %d, %d, %d }\n", curr.x[0], curr.x[1], curr.x[2]);
 			continue;
 		}
 
 		isR2C = false;			//  do complex-2-complex first
-		run_transform ( curr, tupl, isR2C, true );
-		run_transform ( curr, tupli, isR2C, false );
+		if ( runmddft ) run_transform ( curr, tupl, isR2C, true );
+		if ( runimddft )run_transform ( curr, tupli, isR2C, false );
 		
 		tupl  = fftx_mdprdft_Tuple ( wcube[iloop] );
 		tupli = fftx_imdprdft_Tuple ( wcube[iloop] );
 		if ( tupl == NULL || tupli == NULL ) {
-			printf ( "Failed to get tuples for cube { %d, %d, %d }\n", curr.x[0], curr.x[1], curr.x[2]);
+			printf ( "Failed to get tuples (MDPRDFT/IMDPRDFT) for cube { %d, %d, %d }\n", curr.x[0], curr.x[1], curr.x[2]);
 			continue;
 		}
 
 		isR2C = true;			//  do R2c & C2R
-		run_transform ( curr, tupl, isR2C, true );
-		run_transform ( curr, tupli, isR2C, false );
+		if ( runmdprdft ) run_transform ( curr, tupl, isR2C, true );
+		if ( runimdprdft ) run_transform ( curr, tupli, isR2C, false );
 		
 		if ( oneshot ) break;
 	}
@@ -432,4 +484,3 @@ int main( int argc, char** argv) {
 #endif
 
 }
-
