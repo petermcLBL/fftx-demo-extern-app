@@ -159,6 +159,7 @@ static void checkOutputBuffers ( double *Y, double *cufft_Y, bool isR2C, bool xf
 
 
 static int NUM_ITERS = 100;
+static transformTuple_t *mdprdft_fwd;
 
 static void	run_transform ( fftx::point_t<3> curr, transformTuple_t *tupl, bool isR2C, bool xfmdir )
 {
@@ -217,10 +218,6 @@ static void	run_transform ( fftx::point_t<3> curr, transformTuple_t *tupl, bool 
 		check_buff = false;
 	}
 
-	//  Call the transform init function
-	( * tupl->initfp )();
-	DEVICE_CHECK_ERROR ( DEVICE_GET_LAST_ERROR () );
-
 	// set up data in input buffer: gen data = true,
 	// gen complex = true if !isR2C or (isR2C and inverse direction); false otherwise
 	// use full K dim = false when (isR2C and inverse direction); true otherwise
@@ -231,15 +228,31 @@ static void	run_transform ( fftx::point_t<3> curr, transformTuple_t *tupl, bool 
 		//  and use that as input.  For inverse fft we've allocated the output buffer Y at
 		//  the size needed for a real input array which can be used to generate the
 		//  complex output we'll use as input, so flip X & Y in the run transform call below.
+		//  The tupl pointing to the forward trnsform is stored in mdprdft_fwd
+		
 		double *herm_X;
 		herm_X = new double[ M * N * K ];
-		buildInputBuffer ( herm_X, Y, true, false, true );
-		( * tupl->runfp ) ( X, Y, sym );
+		( * mdprdft_fwd->initfp )();
+		buildInputBuffer ( herm_X, Y, true /* generate data */, false /* gen complex data */, true /* full K dim */ );
+
+		( * mdprdft_fwd->runfp ) ( X, Y, sym );
+		DEVICE_CHECK_ERROR ( DEVICE_GET_LAST_ERROR () );
 		DEVICE_MEM_COPY ( host_X, X, (  M * N * K_adj * 2 ) * sizeof(double), MEM_COPY_DEVICE_TO_HOST );
+		( * mdprdft_fwd->destroyfp )();
+		DEVICE_CHECK_ERROR ( DEVICE_GET_LAST_ERROR () );
+
+		// normalize the data returned 
+		for ( int ii = 0; ii < M * N * K_adj * 2; ii++ )
+			host_X[ii] /= ( M * N * K_adj );
+
+		( * tupl->initfp )();
+		DEVICE_CHECK_ERROR ( DEVICE_GET_LAST_ERROR () );
 		buildInputBuffer ( host_X, X, false, ( !isR2C || ( isR2C && !xfmdir ) ), ! ( isR2C && !xfmdir ) );
 		delete[] herm_X;
 	}
 	else {
+		( * tupl->initfp )();
+		DEVICE_CHECK_ERROR ( DEVICE_GET_LAST_ERROR () );
 		buildInputBuffer ( host_X, X, true,
 						   ( !isR2C || ( isR2C && !xfmdir ) ),
 						   ! ( isR2C && !xfmdir ) );
@@ -461,8 +474,8 @@ int main( int argc, char** argv)
 		}
 
 		isR2C = false;			//  do complex-2-complex first
-		if ( runmddft ) run_transform ( curr, tupl, isR2C, true );
-		if ( runimddft )run_transform ( curr, tupli, isR2C, false );
+		if ( runmddft )  run_transform ( curr, tupl, isR2C, true );
+		if ( runimddft ) run_transform ( curr, tupli, isR2C, false );
 		
 		tupl  = fftx_mdprdft_Tuple ( wcube[iloop] );
 		tupli = fftx_imdprdft_Tuple ( wcube[iloop] );
@@ -471,8 +484,9 @@ int main( int argc, char** argv)
 			continue;
 		}
 
-		isR2C = true;			//  do R2c & C2R
-		if ( runmdprdft ) run_transform ( curr, tupl, isR2C, true );
+		isR2C = true;			//  do R2C & C2R
+		if ( runmdprdft )  run_transform ( curr, tupl, isR2C, true );
+		mdprdft_fwd = tupl;
 		if ( runimdprdft ) run_transform ( curr, tupli, isR2C, false );
 		
 		if ( oneshot ) break;
