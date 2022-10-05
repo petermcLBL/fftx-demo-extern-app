@@ -1,7 +1,7 @@
 #include "fftx3.hpp"
 #include "fftx3utilities.h"
-#include "fftx_mddft_public.h"
-#include "fftx_imddft_public.h"
+#include "fftx_mddft_cpu_public.h"
+#include "fftx_imddft_cpu_public.h"
 #include "imddft.fftx.precompile.hpp"
 #include "mddft.fftx.precompile.hpp"
 
@@ -133,13 +133,6 @@ int main(int argc, char* argv[])
   std::complex<double> *midData = new std::complex<double>[sz];
   fftx::array_t<3, std::complex<double> >
     mid(fftx::global_ptr<std::complex<double> >(midData),domain);
-
-  //  Libraries must be set to run CPU mode code...
-  int lib_mode = fftx_mddft_GetLibraryMode ();
-  if ( lib_mode != LIB_MODE_CPU ) {
-	  fftx_mddft_SetLibraryMode ( LIB_MODE_CPU );
-	  fftx_imddft_SetLibraryMode ( LIB_MODE_CPU );
-  }
 
   // Initialize input data.
   initialize(in,nx);

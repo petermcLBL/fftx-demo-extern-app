@@ -2,10 +2,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "fftx_dftbat_public.h"
-#include "fftx_idftbat_public.h"
-#include "fftx_prdftbat_public.h"
-#include "fftx_iprdftbat_public.h"
+#include "fftx_dftbat_cpu_public.h"
+#include "fftx_idftbat_cpu_public.h"
+#include "fftx_prdftbat_cpu_public.h"
+#include "fftx_iprdftbat_cpu_public.h"
 
 static int M, N, K;
 
