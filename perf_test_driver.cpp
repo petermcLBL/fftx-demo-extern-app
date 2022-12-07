@@ -54,6 +54,16 @@ static void writeBufferToFile ( const char *type, double *datap )
 	return;
 }
 
+//  Build the input buffer for a transform and copy it to the device:
+//  The flags listed control whether real or complex data is generated and whether a full cube
+//  or half cube is required (based on the transform type).
+//
+//    host_X:	  local (host) buffer, allocated before calling build buffer
+//    X:          location on device to which buffer is copied
+//    genData:    True => generate new (random) data, False => reuse existing data
+//    genComplex: True => generate Complex values, False => generate real values
+//    useFullK:   True => Use full K (Z) dimension, False => use 'half' K dimension
+
 static void buildInputBuffer ( double *host_X, double *X, bool genData, bool genComplex, bool useFullK )
 {
 	int KK = ( useFullK ) ? K : K_adj;
@@ -83,6 +93,7 @@ static void buildInputBuffer ( double *host_X, double *X, bool genData, bool gen
 
 
 static bool writefiles = false;
+static bool printIterTimes = false;
 
 static void checkOutputBuffers ( double *Y, double *cufft_Y, bool isR2C, bool xfmdir )
 {
@@ -228,7 +239,7 @@ static void	run_transform ( fftx::point_t<3> curr, transformTuple_t *tupl, bool 
 		//  and use that as input.  For inverse fft we've allocated the output buffer Y at
 		//  the size needed for a real input array which can be used to generate the
 		//  complex output we'll use as input, so flip X & Y in the run transform call below.
-		//  The tupl pointing to the forward trnsform is stored in mdprdft_fwd
+		//  The tupl pointing to the forward transform is stored in mdprdft_fwd
 		
 		double *herm_X;
 		herm_X = new double[ M * N * K ];
@@ -344,12 +355,21 @@ static void	run_transform ( fftx::point_t<3> curr, transformTuple_t *tupl, bool 
 		   milliseconds[1], cumilliseconds[1], GPU_STR);
 	
 	float cumulSpiral = 0.0, cumulHip = 0.0;
+	float minSpiral = 1e6, maxSpiral = -1e6, minroc = 1e6, maxroc = -1e6;
 	for ( int ii = 10; ii < iters; ii++ ) {
 		cumulSpiral += milliseconds[ii];
 		cumulHip    += cumilliseconds[ii];
+		minSpiral = ( milliseconds[ii] < minSpiral ) ? milliseconds[ii] : minSpiral ;
+		maxSpiral = ( milliseconds[ii] > maxSpiral ) ? milliseconds[ii] : maxSpiral ;
+		minroc = ( cumilliseconds[ii] < minroc ) ? cumilliseconds[ii] : minroc ;
+		maxroc = ( cumilliseconds[ii] > maxroc ) ? cumilliseconds[ii] : maxroc ;
+		if ( printIterTimes ) 			// print the times for each iteration
+			printf ( "Iteration: %d\t%f\tms (SPIRAL) vs\t%f\tms (%s)\n", ii, milliseconds[ii], cumilliseconds[ii], GPU_STR );
 	} 
 	printf("%f\tms (SPIRAL) vs\t%f\tms (%s), AVERAGE over %d iterations (range: 11 - %d) ##PICKME## \n",
 		   cumulSpiral / NUM_ITERS, cumulHip / NUM_ITERS, GPU_STR, NUM_ITERS, (10 + NUM_ITERS) );
+	printf("%f\tms (min SPIRAL) \t%f\tms (max SPIRAL)\t%f\tms (min %s) \t%f\tms (max %s)\n",
+		   minSpiral, maxSpiral, minroc, GPU_STR, maxroc, GPU_STR ); 
 
 	DEVICE_FREE ( X );
 	DEVICE_FREE ( Y );
@@ -381,6 +401,10 @@ int main( int argc, char** argv)
 			writefiles = true;
 			break;
 
+		case 'p': 					//  print times for each iteration
+			printIterTimes = true;
+			break;
+
 		case 's':
 			argv++, argc--;
 			M = atoi ( argv[1] );
@@ -403,9 +427,10 @@ int main( int argc, char** argv)
 			break;
 
 		case 'h':
-			printf ( "Usage: %s: [ -i iterations ] [ -s MMxNNxKK ] [ -w[ritefiles] ] [ -t transform ]\n", argv[0] );
+			printf ( "Usage: %s: [ -i iterations ] [ -s MMxNNxKK ] [ -w[ritefiles] ] [ -t transform ] [ -p ]\n", argv[0] );
 			printf ( "One -t option is permitted (name is case insensitive): -t { mddft | imddft | mdprdft | imdprdft\n" );
 			printf ( "Writefiles is only permitted when a single size is specified\n" ); 
+			printf ( "-p prints the time for each individual iteration\n" ); 
 			exit (0);
 
 		default:
@@ -458,7 +483,7 @@ int main( int argc, char** argv)
 	rocfft_setup();
 #endif
 
-	transformTuple_t *tupl, *tupli;
+	transformTuple_t *tupl = NULL, *tupli = NULL;
 	bool isR2C;
 
 	for ( /* iloop is initialized */ ; ; iloop++ ) {
@@ -466,28 +491,38 @@ int main( int argc, char** argv)
 		if ( curr.x[0] == 0 && curr.x[1] == 0 && curr.x[2] == 0 ) break;
 
 		printf ( "Cube size { %d, %d, %d } is available\n", curr.x[0], curr.x[1], curr.x[2]);
-		tupl  = fftx_mddft_Tuple ( wcube[iloop] );
-		tupli = fftx_imddft_Tuple ( wcube[iloop] );
-		if ( tupl == NULL || tupli == NULL ) {
-			printf ( "Failed to get tuples (MDDFT/IMDDFT) for cube { %d, %d, %d }\n", curr.x[0], curr.x[1], curr.x[2]);
-			continue;
+		if ( runmddft ) {
+			tupl  = fftx_mddft_Tuple ( wcube[iloop] );
+			if ( tupl == NULL )
+				printf ( "Failed to get tuple (MDDFT) for cube { %d, %d, %d }\n", curr.x[0], curr.x[1], curr.x[2]);
+		}
+
+		if ( runimddft ) {
+			tupli = fftx_imddft_Tuple ( wcube[iloop] );
+			if ( tupli == NULL )
+				printf ( "Failed to get tuple (IMDDFT) for cube { %d, %d, %d }\n", curr.x[0], curr.x[1], curr.x[2]);
 		}
 
 		isR2C = false;			//  do complex-2-complex first
-		if ( runmddft )  run_transform ( curr, tupl, isR2C, true );
-		if ( runimddft ) run_transform ( curr, tupli, isR2C, false );
+		if ( runmddft  && tupl  != NULL ) run_transform ( curr, tupl, isR2C, true );
+		if ( runimddft && tupli != NULL ) run_transform ( curr, tupli, isR2C, false );
 		
-		tupl  = fftx_mdprdft_Tuple ( wcube[iloop] );
-		tupli = fftx_imdprdft_Tuple ( wcube[iloop] );
-		if ( tupl == NULL || tupli == NULL ) {
-			printf ( "Failed to get tuples (MDPRDFT/IMDPRDFT) for cube { %d, %d, %d }\n", curr.x[0], curr.x[1], curr.x[2]);
-			continue;
+		if ( runmdprdft || runimdprdft ) {
+			tupl  = fftx_mdprdft_Tuple ( wcube[iloop] );
+			if ( tupl == NULL )
+				printf ( "Failed to get tuple (MDPRDFT) for cube { %d, %d, %d }\n", curr.x[0], curr.x[1], curr.x[2]);
+		}
+
+		if ( runimdprdft ) {
+			tupli = fftx_imdprdft_Tuple ( wcube[iloop] );
+			if ( tupli == NULL )
+				printf ( "Failed to get tuple (IMDPRDFT) for cube { %d, %d, %d }\n", curr.x[0], curr.x[1], curr.x[2]);
 		}
 
 		isR2C = true;			//  do R2C & C2R
-		if ( runmdprdft )  run_transform ( curr, tupl, isR2C, true );
+		if ( runmdprdft  && tupl != NULL )  run_transform ( curr, tupl, isR2C, true );
 		mdprdft_fwd = tupl;
-		if ( runimdprdft ) run_transform ( curr, tupli, isR2C, false );
+		if ( runimdprdft && tupl != NULL && tupli != NULL ) run_transform ( curr, tupli, isR2C, false );
 		
 		if ( oneshot ) break;
 	}
