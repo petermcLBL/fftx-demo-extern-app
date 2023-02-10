@@ -13,6 +13,7 @@ cmake_minimum_required ( VERSION 3.14 )
 set(CMAKE_BUILD_TYPE Release  CACHE STRING "Debug, Release, RelWithDebInfo, MinSizeRel")
 
 set ( PROJECT dftbatlib_test )
+set ( _build_for "CPU" )		##  Assume building for CPU
 
 enable_language ( C )
 enable_language ( CXX )
@@ -79,7 +80,7 @@ if ( "${CMAKE_CXX_COMPILER}" MATCHES "hipcc$" )
     ##  Need to add $ROCM_PATH for includes and libraries
     if ( DEFINED ENV{ROCM_PATH} )
 	message ( STATUS "ROCM_PATH is defined: $ENV{ROCM_PATH}" )
-	include_directories ( $ENV{ROCM_PATH}/hipfft/include $ENV{ROCM_PATH}/include )
+	include_directories ( $ENV{ROCM_PATH}/include/hipfft $ENV{ROCM_PATH}/include )
     endif ()
     list ( APPEND LIBS_FOR_HIP hipfft rocfft )
     list ( APPEND ADDL_COMPILE_FLAGS -DFFTX_HIP )
@@ -88,8 +89,6 @@ endif ()
 set ( XFORMLIB_test transformlib_test )
 set ( POISSON1_TEST poissonTest )
 set ( PERF_FRAME_TEST perf_test_driver )
-##  set ( PSATD_TEST psatd_test )
-##  set ( PERF_VARIANTS_TEST perf_variants_driver )
 
 ##  Set C standard 11
 set ( CMAKE_C_STANDARD 11 )
@@ -158,12 +157,6 @@ message ( STATUS "CMAKE_INSTALL_PREFIX = ${CMAKE_INSTALL_PREFIX}" )
 set ( CMAKE_INSTALL_RPATH ${FFTX_LIB_LIBRARY_PATH} )
 message ( STATUS "Defined: INSTALL_RPATH = ${CMAKE_INSTALL_RPATH}" )
 
-add_executable ( ${PROJECT} ${PROJECT}.cpp )
-set   ( _targets ${PROJECT} )
-
-add_executable       ( ${POISSON1_TEST} ${POISSON1_TEST}.cpp )
-list ( APPEND _targets ${POISSON1_TEST} )
-
 if ( ${CUDAToolkit_FOUND} )
     add_executable              ( ${XFORMLIB_test} ${XFORMLIB_test}.cpp )
     set_source_files_properties ( ${XFORMLIB_test}.cpp PROPERTIES LANGUAGE CUDA )
@@ -179,12 +172,7 @@ if ( ${CUDAToolkit_FOUND} )
     target_link_libraries       ( ${PERF_FRAME_TEST} PRIVATE ${LIBS_FOR_CUDA} )
     list ( APPEND _targets        ${PERF_FRAME_TEST} )
 
-    # add_executable              ( ${PSATD_TEST} ${PSATD_TEST}.cpp )
-    # set_source_files_properties ( ${PSATD_TEST}.cpp PROPERTIES LANGUAGE CUDA )
-    # target_compile_options      ( ${PSATD_TEST} PRIVATE ${CUDA_COMPILE_FLAGS} )
-    # set_property         ( TARGET ${PSATD_TEST} PROPERTY CUDA_RESOLVE_DEVICE_SYMBOLS ON )
-    # target_link_libraries       ( ${PSATD_TEST} PRIVATE ${LIBS_FOR_CUDA} )
-    # list ( APPEND _targets        ${PSATD_TEST} )
+    set ( _build_for "CUDA" )
 endif ()
 
 if ( ${hip_FOUND} )
@@ -200,17 +188,17 @@ if ( ${hip_FOUND} )
     target_link_libraries       ( ${PERF_FRAME_TEST} PRIVATE ${LIBS_FOR_HIP} )
     list ( APPEND _targets        ${PERF_FRAME_TEST} )
 
-    # add_executable              ( ${PERF_VARIANTS_TEST} ${PERF_VARIANTS_TEST}.cpp )
-    # set_source_files_properties ( ${PERF_VARIANTS_TEST}.cpp PROPERTIES LANGUAGE CXX )
-    # target_link_directories     ( ${PERF_VARIANTS_TEST} PRIVATE $ENV{ROCM_PATH}/lib )
-    # target_link_libraries       ( ${PERF_VARIANTS_TEST} PRIVATE ${LIBS_FOR_HIP} )
-    # list ( APPEND _targets        ${PERF_VARIANTS_TEST} )
+    set ( _build_for "HIP" )
+endif ()
 
-    # add_executable              ( ${PSATD_TEST} ${PSATD_TEST}.cpp )
-    # set_source_files_properties ( ${PSATD_TEST}.cpp PROPERTIES LANGUAGE CXX )
-    # target_link_directories     ( ${PSATD_TEST} PRIVATE $ENV{ROCM_PATH}/lib )
-    # target_link_libraries       ( ${PSATD_TEST} PRIVATE ${LIBS_FOR_HIP} )
-    # list ( APPEND _targets        ${PSATD_TEST} )
+message ( STATUS "_build_for = ${_build_for}" )
+if ( ${_build_for} STREQUAL "CPU" )
+    ##  Add CPU only executables
+    ##  add_executable ( ${PROJECT} ${PROJECT}.cpp )
+    ##  set   ( _targets ${PROJECT} )
+
+    add_executable       ( ${POISSON1_TEST} ${POISSON1_TEST}.cpp )
+    list ( APPEND _targets ${POISSON1_TEST} )
 endif ()
 
 foreach ( _targ ${_targets} )
