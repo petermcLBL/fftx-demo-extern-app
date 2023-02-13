@@ -1,6 +1,11 @@
 #include <stdio.h>
 
 #include "fftx3.hpp"
+#include "interface.hpp"
+#include "mddftObj.hpp"
+#include "imddftObj.hpp"
+#include "mdprdftObj.hpp"
+#include "imdprdftObj.hpp"
 #include "fftx_mddft_gpu_public.h"
 #include "fftx_imddft_gpu_public.h"
 #include "fftx_mdprdft_gpu_public.h"
@@ -65,6 +70,34 @@ static void writeBufferToFile ( const char *type, double *datap )
 //    useFullK:   True => Use full K (Z) dimension, False => use 'half' K dimension
 
 static void buildInputBuffer ( double *host_X, double *X, bool genData, bool genComplex, bool useFullK )
+{
+	int KK = ( useFullK ) ? K : K_adj;
+	
+	if ( genData ) {					// generate a new data input buffer
+		for (int m = 0; m < M; m++) {
+			for (int n = 0; n < N; n++) {
+				for (int k = 0; k < KK; k++) {
+					if ( genComplex ) {
+						host_X[(k + n*KK + m*N*KK)*2 + 0] = 1 - ((double) rand()) / (double) (RAND_MAX/2);
+						host_X[(k + n*KK + m*N*KK)*2 + 1] = 1 - ((double) rand()) / (double) (RAND_MAX/2);
+					}
+					else {
+						host_X[(k + n*KK + m*N*KK)] = 1 - ((double) rand()) / (double) (RAND_MAX/2);
+					}
+				}
+			}
+		}
+	}
+
+	unsigned int nbytes = M * N * KK * sizeof(double);
+	if ( genComplex ) nbytes *= 2;
+	DEVICE_MEM_COPY ( X, host_X, nbytes, MEM_COPY_HOST_TO_DEVICE);
+	DEVICE_CHECK_ERROR ( DEVICE_GET_LAST_ERROR () );
+	return;
+}
+
+
+static void buildInputBuffer ( double *host_X, hipDeviceptr_t X, bool genData, bool genComplex, bool useFullK )
 {
 	int KK = ( useFullK ) ? K : K_adj;
 	
@@ -168,20 +201,97 @@ static void checkOutputBuffers ( double *Y, double *cufft_Y, bool isR2C, bool xf
 	return;
 }
 
-
-static int NUM_ITERS = 100;
-static transformTuple_t *mdprdft_fwd;
-
-static void	run_transform ( fftx::point_t<3> curr, transformTuple_t *tupl, bool isR2C, bool xfmdir )
+static void checkOutputBuffers ( hipDeviceptr_t Y, double *cufft_Y, bool isR2C, bool xfmdir )
 {
+	int datasz, KK = K;
+	bool compCplx = true;				//  compare complex buffers
+
+	if ( isR2C ) {
+		//  real (double) to complex
+		if ( xfmdir ) {
+			//  output buffers are complex, dims M * N * K_adj
+			datasz = M * N * K_adj * 2;
+			KK = K_adj;
+		}
+		else {
+			//  out buffers are real (double), dims M * N * K
+			datasz = M * N * K;
+			compCplx = false;
+		}
+	}
+	else {
+		//  complex to complex, dims M * N * K
+		datasz = M * N * K * 2;
+	}
+
+	printf ( "cube = [ %d, %d, %d ]\t%s\t%s\t", M, N, K,
+			 ( isR2C ) ? "MDPRDFT" : "MDDFT",
+			 ( xfmdir ) ? "(Forward)" : "(Inverse)" );
+
+	double *tmp_Y       = new double [ datasz ];
+	double *tmp_cufft_Y = new double [ datasz ];
+	DEVICE_MEM_COPY ( tmp_Y,             Y, datasz * sizeof(double), MEM_COPY_DEVICE_TO_HOST );
+	DEVICE_MEM_COPY ( tmp_cufft_Y, cufft_Y, datasz * sizeof(double), MEM_COPY_DEVICE_TO_HOST );
+
+	bool correct = true;
+	double maxdelta = 0.0;
+
+	for ( int m = 0; m < M; m++ ) {
+		for ( int n = 0; n < N; n++ ) {
+			for ( int k = 0; k < KK; k++ ) {
+				if ( compCplx ) {
+					DEVICE_FFT_DOUBLECOMPLEX *host_Y       = (DEVICE_FFT_DOUBLECOMPLEX *) tmp_Y;
+					DEVICE_FFT_DOUBLECOMPLEX *host_cufft_Y = (DEVICE_FFT_DOUBLECOMPLEX *) tmp_cufft_Y;
+					DEVICE_FFT_DOUBLECOMPLEX s = host_Y      [k + n*KK + m*N*KK];
+					DEVICE_FFT_DOUBLECOMPLEX c = host_cufft_Y[k + n*KK + m*N*KK];
+
+					bool elem_correct = ( (abs(s.x - c.x) < 1e-7) && (abs(s.y - c.y) < 1e-7) );
+					maxdelta = maxdelta < (double)(abs(s.x -c.x)) ? (double)(abs(s.x -c.x)) : maxdelta ;
+					maxdelta = maxdelta < (double)(abs(s.y -c.y)) ? (double)(abs(s.y -c.y)) : maxdelta ;
+					correct &= elem_correct;
+				}
+				else {
+					double *host_Y = tmp_Y, *host_cufft_Y = tmp_cufft_Y;
+					double deltar = abs ( host_Y[(k + n*KK + m*N*KK)] - host_cufft_Y[(k + n*KK + m*N*KK)] );
+					bool   elem_correct = ( deltar < 1e-7 );
+					maxdelta = maxdelta < deltar ? deltar : maxdelta ;
+					correct &= elem_correct;
+				}
+			}
+		}
+	}
+	
+	printf ( "Correct: %s\tMax delta = %E\t\t##PICKME##\n", (correct ? "True" : "False"), maxdelta );
+	fflush ( stdout );
+
+	if ( writefiles ) {
+		writeBufferToFile ( (const char *)"spiral-out", (double *)tmp_Y );
+		writeBufferToFile ( (const char *)GPU_STR,      (double *)tmp_cufft_Y );
+	}
+	delete[] tmp_Y;
+	delete[] tmp_cufft_Y;
+
+	return;
+}
+
+static int NUM_ITERS = 1;
+static transformTuple_t *mdprdft_fwd;
+template<class T> 
+static void	run_transform ( fftx::point_t<3> curr, transformTuple_t *tupl, bool isR2C, bool xfmdir, T p )
+{
+	std::cout << "does it get into run transform " << p.name <<  std::endl;
 	DEVICE_EVENT_T start, stop, custart, custop;
 	DEVICE_EVENT_CREATE ( &start );
 	DEVICE_EVENT_CREATE ( &stop );
 	DEVICE_EVENT_CREATE ( &custart );
 	DEVICE_EVENT_CREATE ( &custop );
 
-	double *X, *Y;
-	double sym[100];  // dummy symbol
+	#if defined FFTX_HIP
+		hipDeviceptr_t X, Y, sym;
+	#else
+		double *X, *Y;
+		double sym[100];  // dummy symbol
+	#endif
 	int iters = NUM_ITERS + 10;
 	
 	M = curr.x[0], N = curr.x[1], K = curr.x[2];
@@ -192,27 +302,44 @@ static void	run_transform ( fftx::point_t<3> curr, transformTuple_t *tupl, bool 
 	if ( isR2C && xfmdir ) {
 		//  When is real-2-complex and xfmdir (i.e., forward) input is real (double) of dims M * N * K
 		//  and the output array is (complex) of dims M * N * (K/2) + 1)
+		#if defined FFTX_HIP
+		DEVICE_MALLOC ( (void**)&X,       ( M * N * K     * sizeof(DEVICE_FFT_DOUBLEREAL) ) );
+		DEVICE_MALLOC ( (void**)&Y,       ( M * N * K_adj * sizeof(DEVICE_FFT_DOUBLECOMPLEX) ) );
+		#else
 		DEVICE_MALLOC ( &X,       ( M * N * K     * sizeof(DEVICE_FFT_DOUBLEREAL) ) );
 		DEVICE_MALLOC ( &Y,       ( M * N * K_adj * sizeof(DEVICE_FFT_DOUBLECOMPLEX) ) );
+		#endif
 		DEVICE_MALLOC ( &cufft_Y, ( M * N * K_adj * sizeof(DEVICE_FFT_DOUBLECOMPLEX) ) );
 		host_X = new double[ M * N * K ];
 	}
 	else if ( isR2C && !xfmdir ) {
 		//  When is real-2-complex and !xfmdir (i.e., inverse) input is complex of dims M * N * (K/2) + 1)
 		//  and the output array is (double) of dims M * N * K
+		#if defined FFTX_HIP
+		DEVICE_MALLOC ( (void**)&X,       ( M * N * K_adj * sizeof(DEVICE_FFT_DOUBLECOMPLEX) ) );
+		DEVICE_MALLOC ( (void**)&Y,       ( M * N * K     * sizeof(DEVICE_FFT_DOUBLEREAL) ) );
+		#else
 		DEVICE_MALLOC ( &X,       ( M * N * K_adj * sizeof(DEVICE_FFT_DOUBLECOMPLEX) ) );
 		DEVICE_MALLOC ( &Y,       ( M * N * K     * sizeof(DEVICE_FFT_DOUBLEREAL) ) );
+		#endif
 		DEVICE_MALLOC ( &cufft_Y, ( M * N * K     * sizeof(DEVICE_FFT_DOUBLEREAL) ) );
 		host_X = new double[ M * N * K_adj * 2];
 	}
 	else {
+		
 		// complex-2-complex: input and output are complex of dims M * N * K
+		#if defined FFTX_HIP
+		DEVICE_MALLOC (  (void**)&X,       ( M * N * K * sizeof(DEVICE_FFT_DOUBLECOMPLEX) ) );
+		DEVICE_MALLOC (  (void**)&Y,       ( M * N * K * sizeof(DEVICE_FFT_DOUBLECOMPLEX) ) );
+		#else
 		DEVICE_MALLOC ( &X,       ( M * N * K * sizeof(DEVICE_FFT_DOUBLECOMPLEX) ) );
 		DEVICE_MALLOC ( &Y,       ( M * N * K * sizeof(DEVICE_FFT_DOUBLECOMPLEX) ) );
+		#endif
 		DEVICE_MALLOC ( &cufft_Y, ( M * N * K * sizeof(DEVICE_FFT_DOUBLECOMPLEX) ) );
 		host_X = new double[ M * N * K * 2];
 	}
 
+	std::cout << "malloced memory" << std::endl;
 	//  want to run and time: 1st iteration; 2nd iteration; then N iterations
 	//  Report 1st time, 2nd time, and average of N further iterations
 	float *milliseconds   = new float[iters];
@@ -229,6 +356,8 @@ static void	run_transform ( fftx::point_t<3> curr, transformTuple_t *tupl, bool 
 		check_buff = false;
 	}
 
+	std::cout << "malloced memory and made device fft plan" << p.name <<  std::endl;
+	// exit(0);
 	// set up data in input buffer: gen data = true,
 	// gen complex = true if !isR2C or (isR2C and inverse direction); false otherwise
 	// use full K dim = false when (isR2C and inverse direction); true otherwise
@@ -240,29 +369,32 @@ static void	run_transform ( fftx::point_t<3> curr, transformTuple_t *tupl, bool 
 		//  the size needed for a real input array which can be used to generate the
 		//  complex output we'll use as input, so flip X & Y in the run transform call below.
 		//  The tupl pointing to the forward transform is stored in mdprdft_fwd
-		
+		std::vector<int> sizes{M,N,K};
+		std::vector<void*> args{Y,X,sym};
+		IMDPRDFTProblem imdpr(args, sizes, "imdprdft");
 		double *herm_X;
 		herm_X = new double[ M * N * K ];
-		( * mdprdft_fwd->initfp )();
+		// ( * mdprdft_fwd->initfp )();
 		buildInputBuffer ( herm_X, Y, true /* generate data */, false /* gen complex data */, true /* full K dim */ );
 
-		( * mdprdft_fwd->runfp ) ( X, Y, sym );
+		imdpr.transform();
+		// ( * mdprdft_fwd->runfp ) ( X, Y, sym );
 		DEVICE_CHECK_ERROR ( DEVICE_GET_LAST_ERROR () );
 		DEVICE_MEM_COPY ( host_X, X, (  M * N * K_adj * 2 ) * sizeof(double), MEM_COPY_DEVICE_TO_HOST );
-		( * mdprdft_fwd->destroyfp )();
+		// ( * mdprdft_fwd->destroyfp )();
 		DEVICE_CHECK_ERROR ( DEVICE_GET_LAST_ERROR () );
 
 		// normalize the data returned 
 		for ( int ii = 0; ii < M * N * K_adj * 2; ii++ )
 			host_X[ii] /= ( M * N * K_adj );
 
-		( * tupl->initfp )();
+		// ( * tupl->initfp )();
 		DEVICE_CHECK_ERROR ( DEVICE_GET_LAST_ERROR () );
 		buildInputBuffer ( host_X, X, false, ( !isR2C || ( isR2C && !xfmdir ) ), ! ( isR2C && !xfmdir ) );
 		delete[] herm_X;
 	}
 	else {
-		( * tupl->initfp )();
+		// ( * tupl->initfp )();
 		DEVICE_CHECK_ERROR ( DEVICE_GET_LAST_ERROR () );
 		buildInputBuffer ( host_X, X, true,
 						   ( !isR2C || ( isR2C && !xfmdir ) ),
@@ -274,16 +406,22 @@ static void	run_transform ( fftx::point_t<3> curr, transformTuple_t *tupl, bool 
 	/* 	writeBufferToFile ( (const char *)"input", host_X ); */
 	/* 	printf ( "done\n" ); */
 	/* } */
-
+	std::cout << "got here?" << std::endl;
+	std::vector<int> sizes{M,N,K};
+	std::vector<void*> args{Y,X,sym};
+    p.setSizes(sizes);
+	p.setArgs(args);
 	for ( int ii = 0; ii < iters; ii++ ) {
 		//  Call the main transform function
-		DEVICE_EVENT_RECORD ( start );
-		( * tupl->runfp ) ( Y, X, sym );
-		DEVICE_EVENT_RECORD ( stop );
-		DEVICE_CHECK_ERROR ( DEVICE_GET_LAST_ERROR () );
+		// DEVICE_EVENT_RECORD ( start );
+		// ( * tupl->runfp ) ( Y, X, sym );
+		p.transform();
+		// DEVICE_EVENT_RECORD ( stop );
+		// DEVICE_CHECK_ERROR ( DEVICE_GET_LAST_ERROR () );
 
-		DEVICE_EVENT_SYNCHRONIZE ( stop );
-		DEVICE_EVENT_ELAPSED_TIME ( &milliseconds[ii], start, stop );
+		// DEVICE_EVENT_SYNCHRONIZE ( stop );
+		// DEVICE_EVENT_ELAPSED_TIME ( &milliseconds[ii], start, stop );
+		milliseconds[ii] = p.getTime();
 
 /* #ifdef USE_DIFF_DATA */
 /* 		buildInputBuffer ( host_X, X, true, */
@@ -297,8 +435,8 @@ static void	run_transform ( fftx::point_t<3> curr, transformTuple_t *tupl, bool 
 	}
 
 	//  Call the destroy function
-	( * tupl->destroyfp )();
-	DEVICE_CHECK_ERROR ( DEVICE_GET_LAST_ERROR () );
+	// ( * tupl->destroyfp )();
+	// DEVICE_CHECK_ERROR ( DEVICE_GET_LAST_ERROR () );
 
 	if ( check_buff ) {
 		for ( int ii = 0; ii < iters; ii++ ) {
@@ -504,8 +642,11 @@ int main( int argc, char** argv)
 		}
 
 		isR2C = false;			//  do complex-2-complex first
-		if ( runmddft  && tupl  != NULL ) run_transform ( curr, tupl, isR2C, true );
-		if ( runimddft && tupli != NULL ) run_transform ( curr, tupli, isR2C, false );
+		MDDFTProblem mdp("mddft");
+		IMDDFTProblem imdp("imddft");
+
+		if ( runmddft  && tupl  != NULL ) run_transform<MDDFTProblem> ( curr, tupl, isR2C, true, mdp);
+		if ( runimddft && tupli != NULL ) run_transform<IMDDFTProblem> ( curr, tupli, isR2C, false, imdp);
 		
 		if ( runmdprdft || runimdprdft ) {
 			tupl  = fftx_mdprdft_Tuple ( wcube[iloop] );
@@ -520,9 +661,11 @@ int main( int argc, char** argv)
 		}
 
 		isR2C = true;			//  do R2C & C2R
-		if ( runmdprdft  && tupl != NULL )  run_transform ( curr, tupl, isR2C, true );
+		MDPRDFTProblem mdpr("mdprdft");
+		IMDPRDFTProblem imdpr("imdprdft");
+		if ( runmdprdft  && tupl != NULL )  run_transform<MDPRDFTProblem> ( curr, tupl, isR2C, true, mdpr );
 		mdprdft_fwd = tupl;
-		if ( runimdprdft && tupl != NULL && tupli != NULL ) run_transform ( curr, tupli, isR2C, false );
+		if ( runimdprdft && tupl != NULL && tupli != NULL ) run_transform<IMDPRDFTProblem> ( curr, tupli, isR2C, false, imdpr );
 		
 		if ( oneshot ) break;
 	}
