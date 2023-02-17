@@ -1,11 +1,8 @@
 #include <stdio.h>
 
 #include "fftx3.hpp"
-#include "fftx_mddft_gpu_public.h"
-#include "fftx_imddft_gpu_public.h"
-#include "fftx_mdprdft_gpu_public.h"
-#include "fftx_imdprdft_gpu_public.h"
-#include "device_macros.h"
+#include "interface.hpp"
+#include "transformlib.hpp"
 
 #include <stdlib.h>
 #include <string.h>
@@ -15,6 +12,12 @@
 #define GPU_STR "rocfft"
 #else
 #define GPU_STR "cufft"
+#endif
+
+#if defined ( PRINTDEBUG )
+#define DEBUGOUT 1
+#else
+#define DEBUGOUT 0
 #endif
 
 static int M, N, K, K_adj;
@@ -170,10 +173,11 @@ static void checkOutputBuffers ( double *Y, double *cufft_Y, bool isR2C, bool xf
 
 
 static int NUM_ITERS = 100;
-static transformTuple_t *mdprdft_fwd;
 
-static void	run_transform ( fftx::point_t<3> curr, transformTuple_t *tupl, bool isR2C, bool xfmdir )
+template<class T> 
+static void	run_transform ( fftx::point_t<3> curr, bool isR2C, bool xfmdir, T p )
 {
+	if ( DEBUGOUT) 	std::cout << "Entered run_transform: name = " << p.name <<  std::endl;
 	DEVICE_EVENT_T start, stop, custart, custop;
 	DEVICE_EVENT_CREATE ( &start );
 	DEVICE_EVENT_CREATE ( &stop );
@@ -213,6 +217,7 @@ static void	run_transform ( fftx::point_t<3> curr, transformTuple_t *tupl, bool 
 		host_X = new double[ M * N * K * 2];
 	}
 
+	if ( DEBUGOUT) std::cout << "malloced memory" << std::endl;
 	//  want to run and time: 1st iteration; 2nd iteration; then N iterations
 	//  Report 1st time, 2nd time, and average of N further iterations
 	float *milliseconds   = new float[iters];
@@ -229,6 +234,7 @@ static void	run_transform ( fftx::point_t<3> curr, transformTuple_t *tupl, bool 
 		check_buff = false;
 	}
 
+	if ( DEBUGOUT) std::cout << "Created device fft plan: " << p.name <<  std::endl;
 	// set up data in input buffer: gen data = true,
 	// gen complex = true if !isR2C or (isR2C and inverse direction); false otherwise
 	// use full K dim = false when (isR2C and inverse direction); true otherwise
@@ -239,31 +245,27 @@ static void	run_transform ( fftx::point_t<3> curr, transformTuple_t *tupl, bool 
 		//  and use that as input.  For inverse fft we've allocated the output buffer Y at
 		//  the size needed for a real input array which can be used to generate the
 		//  complex output we'll use as input, so flip X & Y in the run transform call below.
-		//  The tupl pointing to the forward transform is stored in mdprdft_fwd
-		
+
+		std::vector<int> sizes { M, N, K };
+		std::vector<void*> args { X, Y, sym };
+		MDPRDFTProblem mdpr ( args, sizes, "mdprdft" );
+
 		double *herm_X;
 		herm_X = new double[ M * N * K ];
-		( * mdprdft_fwd->initfp )();
 		buildInputBuffer ( herm_X, Y, true /* generate data */, false /* gen complex data */, true /* full K dim */ );
 
-		( * mdprdft_fwd->runfp ) ( X, Y, sym );
+		mdpr.transform();
 		DEVICE_CHECK_ERROR ( DEVICE_GET_LAST_ERROR () );
 		DEVICE_MEM_COPY ( host_X, X, (  M * N * K_adj * 2 ) * sizeof(double), MEM_COPY_DEVICE_TO_HOST );
-		( * mdprdft_fwd->destroyfp )();
-		DEVICE_CHECK_ERROR ( DEVICE_GET_LAST_ERROR () );
 
 		// normalize the data returned 
 		for ( int ii = 0; ii < M * N * K_adj * 2; ii++ )
 			host_X[ii] /= ( M * N * K_adj );
 
-		( * tupl->initfp )();
-		DEVICE_CHECK_ERROR ( DEVICE_GET_LAST_ERROR () );
 		buildInputBuffer ( host_X, X, false, ( !isR2C || ( isR2C && !xfmdir ) ), ! ( isR2C && !xfmdir ) );
 		delete[] herm_X;
 	}
 	else {
-		( * tupl->initfp )();
-		DEVICE_CHECK_ERROR ( DEVICE_GET_LAST_ERROR () );
 		buildInputBuffer ( host_X, X, true,
 						   ( !isR2C || ( isR2C && !xfmdir ) ),
 						   ! ( isR2C && !xfmdir ) );
@@ -275,15 +277,16 @@ static void	run_transform ( fftx::point_t<3> curr, transformTuple_t *tupl, bool 
 	/* 	printf ( "done\n" ); */
 	/* } */
 
+	if ( DEBUGOUT) std::cout << "Setup to run transform" << std::endl;
+	std::vector<int> sizes { M, N, K };
+	std::vector<void*> args { Y, X, sym };
+    p.setSizes ( sizes );
+	p.setArgs ( args );
+
 	for ( int ii = 0; ii < iters; ii++ ) {
 		//  Call the main transform function
-		DEVICE_EVENT_RECORD ( start );
-		( * tupl->runfp ) ( Y, X, sym );
-		DEVICE_EVENT_RECORD ( stop );
-		DEVICE_CHECK_ERROR ( DEVICE_GET_LAST_ERROR () );
-
-		DEVICE_EVENT_SYNCHRONIZE ( stop );
-		DEVICE_EVENT_ELAPSED_TIME ( &milliseconds[ii], start, stop );
+		p.transform();
+		milliseconds[ii] = p.getTime();
 
 /* #ifdef USE_DIFF_DATA */
 /* 		buildInputBuffer ( host_X, X, true, */
@@ -295,10 +298,6 @@ static void	run_transform ( fftx::point_t<3> curr, transformTuple_t *tupl, bool 
 /* 						   ! ( isR2C && !xfmdir ) ); */
 /* #endif */
 	}
-
-	//  Call the destroy function
-	( * tupl->destroyfp )();
-	DEVICE_CHECK_ERROR ( DEVICE_GET_LAST_ERROR () );
 
 	if ( check_buff ) {
 		for ( int ii = 0; ii < iters; ii++ ) {
@@ -468,9 +467,9 @@ int main( int argc, char** argv)
 	if ( oneshot ) {
 		for ( iloop = 0; ; iloop++ ) {
 			if ( wcube[iloop].x[0] == 0 && wcube[iloop].x[1] == 0 && wcube[iloop].x[2] == 0 ) {
-				//  requested size is not in library, print message & exit
-				printf ( "%s: Cube { %d, %d, %d } not found in library ... exiting\n", prog, M, N, K );
-				exit (-1);
+				//  requested size is not in library, print message & let RTC generate code
+				printf ( "%s: Cube { %d, %d, %d } not found in library ... perform RTC to generate code\n", prog, M, N, K );
+				break;
 			}
 			if ( wcube[iloop].x[0] == M && wcube[iloop].x[1] == N && wcube[iloop].x[2] == K ) {
 				break;
@@ -483,46 +482,31 @@ int main( int argc, char** argv)
 	rocfft_setup();
 #endif
 
-	transformTuple_t *tupl = NULL, *tupli = NULL;
 	bool isR2C;
 
 	for ( /* iloop is initialized */ ; ; iloop++ ) {
 		curr = wcube[iloop];
-		if ( curr.x[0] == 0 && curr.x[1] == 0 && curr.x[2] == 0 ) break;
-
-		printf ( "Cube size { %d, %d, %d } is available\n", curr.x[0], curr.x[1], curr.x[2]);
-		if ( runmddft ) {
-			tupl  = fftx_mddft_Tuple ( wcube[iloop] );
-			if ( tupl == NULL )
-				printf ( "Failed to get tuple (MDDFT) for cube { %d, %d, %d }\n", curr.x[0], curr.x[1], curr.x[2]);
+		if ( curr.x[0] == 0 && curr.x[1] == 0 && curr.x[2] == 0 ) {
+			if ( !oneshot ) break;		// no more to loop thru - break out
+			curr.x[0] = M; curr.x[1] = N; curr.x[2] = K;
+			//  oneshot = true;				// end after processing this size
 		}
 
-		if ( runimddft ) {
-			tupli = fftx_imddft_Tuple ( wcube[iloop] );
-			if ( tupli == NULL )
-				printf ( "Failed to get tuple (IMDDFT) for cube { %d, %d, %d }\n", curr.x[0], curr.x[1], curr.x[2]);
-		}
+		printf ( "Cube size { %d, %d, %d } ... processing\n", curr.x[0], curr.x[1], curr.x[2]);
 
 		isR2C = false;			//  do complex-2-complex first
-		if ( runmddft  && tupl  != NULL ) run_transform ( curr, tupl, isR2C, true );
-		if ( runimddft && tupli != NULL ) run_transform ( curr, tupli, isR2C, false );
+		MDDFTProblem mdp ( "mddft" );
+		IMDDFTProblem imdp ( "imddft" );
+
+		if ( runmddft  ) run_transform<MDDFTProblem>  ( curr, isR2C, true,  mdp );
+		if ( runimddft ) run_transform<IMDDFTProblem> ( curr, isR2C, false, imdp );
 		
-		if ( runmdprdft || runimdprdft ) {
-			tupl  = fftx_mdprdft_Tuple ( wcube[iloop] );
-			if ( tupl == NULL )
-				printf ( "Failed to get tuple (MDPRDFT) for cube { %d, %d, %d }\n", curr.x[0], curr.x[1], curr.x[2]);
-		}
-
-		if ( runimdprdft ) {
-			tupli = fftx_imdprdft_Tuple ( wcube[iloop] );
-			if ( tupli == NULL )
-				printf ( "Failed to get tuple (IMDPRDFT) for cube { %d, %d, %d }\n", curr.x[0], curr.x[1], curr.x[2]);
-		}
-
 		isR2C = true;			//  do R2C & C2R
-		if ( runmdprdft  && tupl != NULL )  run_transform ( curr, tupl, isR2C, true );
-		mdprdft_fwd = tupl;
-		if ( runimdprdft && tupl != NULL && tupli != NULL ) run_transform ( curr, tupli, isR2C, false );
+		MDPRDFTProblem mdpr ( "mdprdft" );
+		IMDPRDFTProblem imdpr ( "imdprdft" );
+
+		if ( runmdprdft  ) run_transform<MDPRDFTProblem>  ( curr, isR2C, true,  mdpr );
+		if ( runimdprdft ) run_transform<IMDPRDFTProblem> ( curr, isR2C, false, imdpr );
 		
 		if ( oneshot ) break;
 	}
