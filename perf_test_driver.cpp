@@ -61,7 +61,7 @@ static void writeBufferToFile ( const char *type, double *datap )
 //  The flags listed control whether real or complex data is generated and whether a full cube
 //  or half cube is required (based on the transform type).
 //
-//    host_X:      local (host) buffer, allocated before calling build buffer
+//    host_X:     local (host) buffer, allocated before calling build buffer
 //    X:          location on device to which buffer is copied
 //    genData:    True => generate new (random) data, False => reuse existing data
 //    genComplex: True => generate Complex values, False => generate real values
