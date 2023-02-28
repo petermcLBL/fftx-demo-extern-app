@@ -170,7 +170,7 @@ int main(int argc, char* argv[])
          mid);
   
   std::vector<void*> args1{userOutputData, midData, symbol};
-  IMDDFTProblem imdp(args1, sizes, "mddft");
+  IMDDFTProblem imdp(args1, sizes, "imddft");
   imdp.transform();
   // compute inverse FFT, with timers.
   // fftx::imddft<3> inverse3d(sz3d); 
