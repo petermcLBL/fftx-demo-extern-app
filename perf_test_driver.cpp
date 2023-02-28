@@ -95,34 +95,6 @@ static void buildInputBuffer ( double *host_X, double *X, bool genData, bool gen
 }
 
 
-static void buildInputBuffer ( double *host_X, hipDeviceptr_t X, bool genData, bool genComplex, bool useFullK )
-{
-	int KK = ( useFullK ) ? K : K_adj;
-	
-	if ( genData ) {					// generate a new data input buffer
-		for (int m = 0; m < M; m++) {
-			for (int n = 0; n < N; n++) {
-				for (int k = 0; k < KK; k++) {
-					if ( genComplex ) {
-						host_X[(k + n*KK + m*N*KK)*2 + 0] = 1 - ((double) rand()) / (double) (RAND_MAX/2);
-						host_X[(k + n*KK + m*N*KK)*2 + 1] = 1 - ((double) rand()) / (double) (RAND_MAX/2);
-					}
-					else {
-						host_X[(k + n*KK + m*N*KK)] = 1 - ((double) rand()) / (double) (RAND_MAX/2);
-					}
-				}
-			}
-		}
-	}
-
-	unsigned int nbytes = M * N * KK * sizeof(double);
-	if ( genComplex ) nbytes *= 2;
-	DEVICE_MEM_COPY ( X, host_X, nbytes, MEM_COPY_HOST_TO_DEVICE);
-	DEVICE_CHECK_ERROR ( DEVICE_GET_LAST_ERROR () );
-	return;
-}
-
-
 static bool writefiles = false;
 static bool printIterTimes = false;
 
