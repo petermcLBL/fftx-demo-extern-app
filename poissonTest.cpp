@@ -1,9 +1,14 @@
+// #include "fftx3.hpp"
+// #include "fftx3utilities.h"
+// #include "fftx_mddft_cpu_public.h"
+// #include "fftx_imddft_cpu_public.h"
+// #include "imddft.fftx.precompile.hpp"
+// #include "mddft.fftx.precompile.hpp"
+
 #include "fftx3.hpp"
-#include "fftx3utilities.h"
-#include "fftx_mddft_cpu_public.h"
-#include "fftx_imddft_cpu_public.h"
-#include "imddft.fftx.precompile.hpp"
-#include "mddft.fftx.precompile.hpp"
+#include "interface.hpp"
+#include "transformlib.hpp"
+
 
 void GetCmdLineArgumenti(int argc, const char** argv, const char* name, int* rtn)
 {
@@ -116,6 +121,7 @@ int main(int argc, char* argv[])
   
   std::complex<double> *userInputData = new std::complex<double>[sz];
   std::complex<double> *userOutputData = new std::complex<double>[sz];
+  std::complex<double> *symbol = new std::complex<double>[sz];
 
   // FFTX description of problem domain,
   fftx::point_t<3> sz3d = {nx,ny,nz};
@@ -137,8 +143,13 @@ int main(int argc, char* argv[])
   // Initialize input data.
   initialize(in,nx);
   // Apply forward FFT, with timers.  
-  fftx::mddft<3> forward3d(sz3d);
-  forward3d.transform(in,mid);
+  // fftx::mddft<3> forward3d(sz3d);
+  // forward3d.transform(in,mid);
+  std::vector<void*> args{midData, userInputData, symbol};
+  std::vector<int> sizes{nx,ny,nz};
+
+  MDDFTProblem mdp(args, sizes, "mddft");
+  mdp.transform();
   // Multiply mid by 1/(symbol of laplacian).
   
   double dx = 1.0/nx;
@@ -157,9 +168,13 @@ int main(int argc, char* argv[])
              {v = 0.;} // Removing the mean charge to enforce solvability.
          },
          mid);
+  
+  std::vector<void*> args1{userOutputData, midData, symbol};
+  IMDDFTProblem imdp(args1, sizes, "mddft");
+  imdp.transform();
   // compute inverse FFT, with timers.
-  fftx::imddft<3> inverse3d(sz3d); 
-  inverse3d.transform(mid,out);
+  // fftx::imddft<3> inverse3d(sz3d); 
+  // inverse3d.transform(mid,out);
   
     // scale to normalize FFT.
   double scale = 1.0/(nx*ny*nz);  
