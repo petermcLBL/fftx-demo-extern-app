@@ -197,8 +197,9 @@ if ( ${_build_for} STREQUAL "CPU" )
     ##  add_executable ( ${PROJECT} ${PROJECT}.cpp )
     ##  set   ( _targets ${PROJECT} )
 
-    add_executable       ( ${POISSON1_TEST} ${POISSON1_TEST}.cpp )
-    list ( APPEND _targets ${POISSON1_TEST} )
+    add_executable          ( ${POISSON1_TEST} ${POISSON1_TEST}.cpp )
+    target_link_libraries   ( ${POISSON1_TEST} PRIVATE dl )
+    list ( APPEND _targets    ${POISSON1_TEST} )
 endif ()
 
 foreach ( _targ ${_targets} )
