@@ -97,10 +97,11 @@ set ( CMAKE_CXX_STANDARD 11 )
 if ( ${CUDAToolkit_FOUND} )
     set ( CUDA_COMPILE_FLAGS -m64 -rdc=false )
     if ( WIN32 )
-	set ( LIBS_FOR_CUDA cufft )
+	set ( LIBS_FOR_CUDA cufft cuda nvrtc )
     else ()
-	set ( LIBS_FOR_CUDA cufft culibos )
+	set ( LIBS_FOR_CUDA cufft culibos cuda nvrtc )
     endif ()
+    list ( APPEND ADDL_COMPILE_FLAGS -DFFTX_CUDA )
 endif ()
 
 ##  Setup and access any SPIRAL related items...
