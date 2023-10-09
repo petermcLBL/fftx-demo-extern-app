@@ -247,7 +247,11 @@ static void    run_transform ( fftx::point_t<3> curr, bool isR2C, bool xfmdir, T
         //  complex output we'll use as input, so flip X & Y in the run transform call below.
 
         std::vector<int> sizes { M, N, K };
+        #if defined FFTX_HIP
         std::vector<void*> args { X, Y, sym };
+        #else
+        std::vector<void*> args { &X, &Y, &sym };
+        #endif
         MDPRDFTProblem mdpr ( args, sizes, "mdprdft" );
 
         double *herm_X;
@@ -279,7 +283,11 @@ static void    run_transform ( fftx::point_t<3> curr, bool isR2C, bool xfmdir, T
 
     if ( DEBUGOUT) std::cout << "Setup to run transform" << std::endl;
     std::vector<int> sizes { M, N, K };
-    std::vector<void*> args { Y, X, sym };
+    #if defined FFTX_HIP
+        std::vector<void*> args { Y, X, sym };
+    #else
+        std::vector<void*> args { &Y, &X, &sym };
+    #endif
     p.setSizes ( sizes );
     p.setArgs ( args );
 
