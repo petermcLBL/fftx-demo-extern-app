@@ -124,6 +124,7 @@ static void checkOutputBuffers ( double *Y, double *cufft_Y, bool isR2C, bool xf
     printf ( "cube = [ %d, %d, %d ]\t%s\t%s\t", M, N, K,
              ( isR2C ) ? "MDPRDFT" : "MDDFT",
              ( xfmdir ) ? "(Forward)" : "(Inverse)" );
+    fflush ( stdout );
 
     double *tmp_Y       = new double [ datasz ];
     double *tmp_cufft_Y = new double [ datasz ];
@@ -231,6 +232,7 @@ static void    run_transform ( fftx::point_t<3> curr, bool isR2C, bool xfmdir, T
     res = DEVICE_FFT_PLAN3D ( &plan, M, N, K, xfmtype );
     if ( res != DEVICE_FFT_SUCCESS ) {
         printf ( "Create DEVICE_FFT_PLAN3D failed with error code %d ... skip buffer check\n", res );
+        fflush ( stdout );
         check_buff = false;
     }
 
@@ -328,6 +330,7 @@ static void    run_transform ( fftx::point_t<3> curr, bool isR2C, bool xfmdir, T
             }
             if ( res != DEVICE_FFT_SUCCESS) {
                 printf ( "Launch DEVICE_FFT_EXEC failed with error code %d ... skip buffer check\n", res );
+                fflush ( stdout );
                 check_buff = false;
                 break;
             }
@@ -360,6 +363,7 @@ static void    run_transform ( fftx::point_t<3> curr, bool isR2C, bool xfmdir, T
            milliseconds[0], cumilliseconds[0], GPU_STR);
     printf("%f\tms (SPIRAL) vs\t%f\tms (%s),\t\tSECOND iteration\t##PICKME## \n",
            milliseconds[1], cumilliseconds[1], GPU_STR);
+    fflush ( stdout );
 
     //  compute averages (ignore first 10 iterations)
     float cumulSpiral = 0.0, cumulHip = 0.0;
@@ -378,6 +382,7 @@ static void    run_transform ( fftx::point_t<3> curr, bool isR2C, bool xfmdir, T
            cumulSpiral / NUM_ITERS, cumulHip / NUM_ITERS, GPU_STR, NUM_ITERS, (10 + NUM_ITERS) );
     printf("%f\tms (min SPIRAL) \t%f\tms (max SPIRAL)\t%f\tms (min %s) \t%f\tms (max %s)\n",
            minSpiral, maxSpiral, minroc, GPU_STR, maxroc, GPU_STR );
+    fflush ( stdout );
 
     DEVICE_FREE ( X );
     DEVICE_FREE ( Y );
