@@ -10,7 +10,7 @@
 
 cmake_minimum_required ( VERSION 3.14 )
 
-set(CMAKE_BUILD_TYPE Debug  CACHE STRING "Debug, Release, RelWithDebInfo, MinSizeRel")
+set(CMAKE_BUILD_TYPE Release CACHE STRING "Debug, Release, RelWithDebInfo, MinSizeRel")
 
 set ( PROJECT dftbatlib_test )
 set ( _build_for "CPU" )		##  Assume building for CPU
