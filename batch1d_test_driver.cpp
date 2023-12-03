@@ -422,6 +422,7 @@ int main( int argc, char** argv)
         if ( runbatprdft ) sprintf ( buf, "for transform: PRDFTBAT, " );
         if ( runibatprdft ) sprintf ( buf, "for transform: IPRDFTBAT, " );
     }
+    printf ( "\n" );
 
     fftx::point_t<4> *xfmspec, curr;
 
