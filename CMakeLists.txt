@@ -10,7 +10,7 @@
 
 cmake_minimum_required ( VERSION 3.14 )
 
-set(CMAKE_BUILD_TYPE Release  CACHE STRING "Debug, Release, RelWithDebInfo, MinSizeRel")
+set(CMAKE_BUILD_TYPE Release CACHE STRING "Debug, Release, RelWithDebInfo, MinSizeRel")
 
 set ( PROJECT dftbatlib_test )
 set ( _build_for "CPU" )		##  Assume building for CPU
@@ -89,6 +89,7 @@ endif ()
 set ( XFORMLIB_test transformlib_test )
 set ( POISSON1_TEST poissonTest )
 set ( PERF_FRAME_TEST perf_test_driver )
+set ( BATCH1D_DRIVER batch1d_test_driver )
 
 ##  Set C standard 11
 set ( CMAKE_C_STANDARD 11 )
@@ -173,6 +174,13 @@ if ( ${CUDAToolkit_FOUND} )
     target_link_libraries       ( ${PERF_FRAME_TEST} PRIVATE ${LIBS_FOR_CUDA} )
     list ( APPEND _targets        ${PERF_FRAME_TEST} )
 
+    add_executable              ( ${BATCH1D_DRIVER} ${BATCH1D_DRIVER}.cpp )
+    set_source_files_properties ( ${BATCH1D_DRIVER}.cpp PROPERTIES LANGUAGE CUDA )
+    target_compile_options      ( ${BATCH1D_DRIVER} PRIVATE ${CUDA_COMPILE_FLAGS} )
+    set_property         ( TARGET ${BATCH1D_DRIVER} PROPERTY CUDA_RESOLVE_DEVICE_SYMBOLS ON )
+    target_link_libraries       ( ${BATCH1D_DRIVER} PRIVATE ${LIBS_FOR_CUDA} )
+    list ( APPEND _targets        ${BATCH1D_DRIVER} )
+
     set ( _build_for "CUDA" )
 endif ()
 
@@ -188,6 +196,12 @@ if ( ${hip_FOUND} )
     target_link_directories     ( ${PERF_FRAME_TEST} PRIVATE $ENV{ROCM_PATH}/lib )
     target_link_libraries       ( ${PERF_FRAME_TEST} PRIVATE ${LIBS_FOR_HIP} )
     list ( APPEND _targets        ${PERF_FRAME_TEST} )
+
+    add_executable              ( ${BATCH1D_DRIVER} ${BATCH1D_DRIVER}.cpp )
+    set_source_files_properties ( ${BATCH1D_DRIVER}.cpp PROPERTIES LANGUAGE CXX )
+    target_link_directories     ( ${BATCH1D_DRIVER} PRIVATE $ENV{ROCM_PATH}/lib )
+    target_link_libraries       ( ${BATCH1D_DRIVER} PRIVATE ${LIBS_FOR_HIP} )
+    list ( APPEND _targets        ${BATCH1D_DRIVER} )
 
     set ( _build_for "HIP" )
 endif ()
