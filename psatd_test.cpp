@@ -1,7 +1,8 @@
 #include <stdio.h>
 
 #include "fftx3.hpp"
-#include "fftx_mddft_public.h"
+#include "fftx_psatd_gpu_public.h"
+//  #include "fftx_imddft_gpu_public.h"
 #include "device_macros.h"
 
 static int M, N, K;
@@ -13,13 +14,12 @@ static void buildInputBuffer(double *host_X, double *X)
 	for (int m = 0; m < M; m++) {
 		for (int n = 0; n < N; n++) {
 			for (int k = 0; k < K; k++) {
-				host_X[(k + n*K + m*N*K)*2 + 0] = 1 - ((double) rand()) / (double) (RAND_MAX/2);
-				host_X[(k + n*K + m*N*K)*2 + 1] = 1 - ((double) rand()) / (double) (RAND_MAX/2);
+				host_X[(k + n*K + m*N*K)] = 1 - ((double) rand()) / (double) (RAND_MAX/2);
 			}
 		}
 	}
 
-	DEVICE_MEM_COPY ( X, host_X, M*N*K*2*sizeof(double), MEM_COPY_HOST_TO_DEVICE);
+	DEVICE_MEM_COPY ( X, host_X, M*N*K*sizeof(double), MEM_COPY_HOST_TO_DEVICE);
 	DEVICE_CHECK_ERROR ( DEVICE_GET_LAST_ERROR () );
 	if ( debug_print ) printf ( "buildInputBuffer: Randomized input buffer copied to device memory\n" );
 	return;
@@ -69,6 +69,7 @@ static void checkOutputBuffers ( double *Y, double *cufft_Y )
 	return;
 }
 
+
 int main ( int argc, char* argv[] ) {
 
 	fftx::point_t<3> *wcube, curr;
@@ -76,29 +77,36 @@ int main ( int argc, char* argv[] ) {
 	bool oneshot = false;
 	double *X, *Y;
 	double sym[100];  // dummy symbol
+	char *prog = argv[0];
 						  
-	//  cudaEvent_t start, stop, custart, custop;
+	debug_print = true;
+	int baz = 0;
+	while ( argc > 1 && argv[1][0] == '-' ) {
+		switch ( argv[1][1] ) {
+		case 's':        // size specified, must be of form MMxNNxKK
+			argv++, argc--;
+			M = atoi ( argv[1] );
+			while ( argv[1][baz] != 'x' ) baz++;
+			baz++ ;
+			N = atoi ( & argv[1][baz] );
+			while ( argv[1][baz] != 'x' ) baz++;
+			baz++ ;
+			K = atoi ( & argv[1][baz] );
+			oneshot = true;
+			break;
+			//  debug_print = true;
 
-	//  Currently only runs on GPU [CUDA or HIP], check library support this mode
-	if ( fftx_mddft_GetLibraryMode () != LIB_MODE_CUDA && fftx_mddft_GetLibraryMode () != LIB_MODE_HIP ) {
-		printf ( "%s: fftx_mddft doesn't support GPU, exiting...\n", argv[0] );
-		exit (-1);
+		case 'h':
+			printf ( "Usage: %s: [ -s MMxNNxKK ]\n", argv[0] );
+			exit (0);
+
+		default:
+			printf ( "%s: unknown argument: %s ... ignored\n", prog, argv[1] );
+		}
+		argv++, argc--;
 	}
 
-	if ( argc > 1 ) {	// size specified, must be of form MMxNNxKK
-		char * foo = argv[1];
-		M = atoi ( foo );
-		while ( * foo != 'x' ) foo++;
-		foo++ ;
-		N = atoi ( foo );
-		while ( * foo != 'x' ) foo++;
-		foo++ ;
-		K = atoi ( foo );
-		oneshot = true;
-		debug_print = true;
-	}
-	
-	wcube = fftx_mddft_QuerySizes ();
+	wcube = fftx_psatd_QuerySizes ();
 	if (wcube == NULL) {
 		printf ( "Failed to get list of available sizes\n" );
 		exit (-1);
@@ -117,36 +125,36 @@ int main ( int argc, char* argv[] ) {
 		if ( curr.x[0] == 0 && curr.x[1] == 0 && curr.x[2] == 0 ) break;
 
 		printf ( "Cube size { %d, %d, %d } is available\n", curr.x[0], curr.x[1], curr.x[2]);
-		tupl = fftx_mddft_Tuple ( wcube[iloop] );
+		tupl = fftx_psatd_Tuple ( wcube[iloop] );
 		if ( tupl == NULL ) {
 			printf ( "Failed to get tuple for cube { %d, %d, %d }\n", curr.x[0], curr.x[1], curr.x[2]);
 		}
 		else {
 			M = curr.x[0], N = curr.x[1], K = curr.x[2];
-			if ( debug_print ) printf ( "M = %d, N = %d, K = %d, malloc sizes = %d * sizeof(double)\n", M, N, K, M*N*K*2 );
+			if ( debug_print ) printf ( "M = %d, N = %d, K = %d, malloc sizes = %d * sizeof(double)\n", M, N, K, M*N*K );
 		
-			DEVICE_MALLOC ( &X, M*N*K * 2*sizeof(double) );
-			if ( debug_print ) printf ( "Allocated %lu bytes for device input array X\n", M*N*K*2*sizeof(double) );
-			DEVICE_MALLOC ( &Y, M*N*K * 2*sizeof(double) );
-			if ( debug_print ) printf ( "Allocated %lu bytes for device output array Y\n", M*N*K*2*sizeof(double) );
+			DEVICE_MALLOC ( &X, M*N*K * sizeof(double) );
+			if ( debug_print ) printf ( "Allocated %lu bytes for device input array X\n", M*N*K*sizeof(double) );
+			DEVICE_MALLOC ( &Y, M*N*K * sizeof(double) );
+			if ( debug_print ) printf ( "Allocated %lu bytes for device output array Y\n", M*N*K*sizeof(double) );
 
-			double *host_X = new double[M*N*K*2];
-
-			DEVICE_FFT_DOUBLECOMPLEX *cufft_Y; 
-			DEVICE_MALLOC ( &cufft_Y, M*N*K * sizeof(DEVICE_FFT_DOUBLECOMPLEX) );
-			if ( debug_print ) printf ( "Allocated %lu bytes for device cu/roc fft output array\n", M*N*K*sizeof(DEVICE_FFT_DOUBLECOMPLEX) );
-
-			DEVICE_FFT_HANDLE plan;
-			if ( debug_print ) printf ( "Create plan for cu/roc fft...\n" );
-			bool check_buff = true;
-			DEVICE_FFT_RESULT res;
-			//  DEVICE_FFT_CHECK ( res, "*** Exiting ... Create DEVICE_FFT_PLAN3D" );
-			res = DEVICE_FFT_PLAN3D ( &plan, M, N, K,  DEVICE_FFT_Z2Z );
-			if (res != DEVICE_FFT_SUCCESS ) {
-				printf ( "Create DEVICE_FFT_PLAN3D failed with error code %d ... skip buffer check\n", res );
-				check_buff = false;
-			}
+			double *host_X = new double[M*N*K];
 			
+			// DEVICE_FFT_DOUBLECOMPLEX *cufft_Y; 
+			// DEVICE_MALLOC ( &cufft_Y, M*N*K * sizeof(DEVICE_FFT_DOUBLECOMPLEX) );
+			// if ( debug_print ) printf ( "Allocated %lu bytes for device cu/roc fft output array\n", M*N*K*sizeof(DEVICE_FFT_DOUBLECOMPLEX) );
+
+			// DEVICE_FFT_HANDLE plan;
+			// if ( debug_print ) printf ( "Create plan for cu/roc fft...\n" );
+			// bool check_buff = true;
+			// DEVICE_FFT_RESULT res;
+			// //  DEVICE_FFT_CHECK ( res, "*** Exiting ... Create DEVICE_FFT_PLAN3D" );
+			// res = DEVICE_FFT_PLAN3D ( &plan, M, N, K,  DEVICE_FFT_Z2Z );
+			// if (res != DEVICE_FFT_SUCCESS ) {
+			// 	printf ( "Create DEVICE_FFT_PLAN3D failed with error code %d ... skip buffer check\n", res );
+			// 	check_buff = false;
+			// }
+
 			//  Call the init function
 			( * tupl->initfp )();
 			DEVICE_CHECK_ERROR ( DEVICE_GET_LAST_ERROR () );
@@ -164,34 +172,34 @@ int main ( int argc, char* argv[] ) {
 			}
 			
 			// Tear down / cleanup
-			( * tupl->destroyfp ) ();				//  destroy_mddft3d();
+			( * tupl->destroyfp ) ();
 			DEVICE_CHECK_ERROR ( DEVICE_GET_LAST_ERROR () );
 			if ( debug_print ) printf ( "Spiral destroy function called: %s\n", DEVICE_GET_ERROR_STRING ( DEVICE_GET_LAST_ERROR () ) );
 
-			if ( check_buff ) {
-				if ( DEVICE_FFT_EXECZ2Z (
-						 plan,
-						 (DEVICE_FFT_DOUBLECOMPLEX *) X,
-						 (DEVICE_FFT_DOUBLECOMPLEX *) cufft_Y,
-						 DEVICE_FFT_FORWARD
-						 ) != DEVICE_FFT_SUCCESS) {
-					printf("DEVICE_FFT_EXECZ2Z launch failed\n");
-					exit(-1);
-				}
-			}
+			// if ( check_buff ) {
+			// 	if ( DEVICE_FFT_EXECZ2Z (
+			// 			 plan,
+			// 			 (DEVICE_FFT_DOUBLECOMPLEX *) X,
+			// 			 (DEVICE_FFT_DOUBLECOMPLEX *) cufft_Y,
+			// 			 DEVICE_FFT_FORWARD
+			// 			 ) != DEVICE_FFT_SUCCESS) {
+			// 		printf("DEVICE_FFT_EXECZ2Z launch failed\n");
+			// 		exit(-1);
+			// 	}
+			// }
 
-			DEVICE_SYNCHRONIZE();
-			if ( DEVICE_GET_LAST_ERROR () != DEVICE_SUCCESS ) {
-				printf("DEVICE_FFT_EXECZ2Z failed\n");
-				exit(-1);
-			}
+			// DEVICE_SYNCHRONIZE();
+			// if ( DEVICE_GET_LAST_ERROR () != DEVICE_SUCCESS ) {
+			// 	printf("DEVICE_FFT_EXECZ2Z failed\n");
+			// 	exit(-1);
+			// }
 
-			//  check cufft/rocfft and FFTX got same results
-			if ( check_buff ) checkOutputBuffers ( Y, (double *)cufft_Y );
+			// //  check cufft/rocfft and FFTX got same results
+			// if ( check_buff ) checkOutputBuffers ( Y, (double *)cufft_Y );
 			
 			DEVICE_FREE ( X );
 			DEVICE_FREE ( Y );
-			DEVICE_FREE ( cufft_Y );
+			//  DEVICE_FREE ( cufft_Y );
 			delete[] host_X;
 
 			if ( oneshot ) break;
