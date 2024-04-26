@@ -14,7 +14,7 @@ ifndef_any_of = $(filter undefined,$(foreach v,$(1),$(origin $(v))))
 ifdef_any_of = $(filter-out undefined,$(foreach v,$(1),$(origin $(v))))
 ifneq ($(call ifdef_any_of,CUDATOOLKIT_HOME ROCM_PATH), )
   # Need to link to ALL the libraries, even though we don't call them all.
-  FFTX_LIBRARIES=-lfftx_mpi -lfftx_mddft_gpu -lfftx_imddft_gpu -lfftx_mdprdft_gpu -lfftx_imdprdft_gpu -lfftx_dftbat_gpu -lfftx_idftbat_gpu -lfftx_prdftbat_gpu -lfftx_iprdftbat_gpu
+  FFTX_LIBRARIES=-lfftx_mpi -lfftx_mddft_gpu -lfftx_imddft_gpu -lfftx_mdprdft_gpu -lfftx_imdprdft_gpu -lfftx_dftbat_gpu -lfftx_idftbat_gpu -lfftx_prdftbat_gpu -lfftx_iprdftbat_gpu -lfftx_rconv_gpu
 #
 # CPU only
 #
@@ -39,6 +39,9 @@ ifdef CUDATOOLKIT_HOME
   # CUDA_LIB=/opt/nvidia/hpc_sdk/Linux_x86_64/22.7/cuda/11.7/lib64
   CUDA_LINK=-L$(CUDA_LIB) -lcudart
   CC_LINK=$(CUDA_LINK)
+  # Get rid of annoying "DSO missing from command line" error.
+  LDFLAGS=-Wl,--copy-dt-needed-entries
+
 
 #
 # HIP only
@@ -52,7 +55,7 @@ else ifdef ROCM_PATH
   # FFTX_GPU_INCLUDE=/opt/rocm-5.3.0/include
   HIP_LIB=$(ROCM_PATH)/lib
   # HIP_LIB=/opt/rocm-5.3.0/lib/
-  HIP_LINK=-L$(HIP_LIB) -lamdhip64 -lhipfft -lstdc++
+  HIP_LINK=-L$(HIP_LIB) -lamdhip64 -lhipfft -lrocfft -lstdc++
   CC_LINK=$(HIP_LINK)
 
 #
@@ -60,10 +63,9 @@ else ifdef ROCM_PATH
 #
 else
   CC=mpicxx
+  # Get rid of annoying "DSO missing from command line" error.
+  LDFLAGS=-Wl,--copy-dt-needed-entries
 endif
-
-# Get rid of annoying "DSO missing from command line" error.
-LDFLAGS=-Wl,--copy-dt-needed-entries
 
 LINK_LINE=mpicc $(LDFLAGS) $(CC_LINK) $(FFTX_LINK) $(FFTX_LIBRARIES)
 
