@@ -21,7 +21,8 @@ endif
 ## make CUDA: needs CUDATOOLKIT_HOME
 #
 CUDA: CC=nvcc
-CUDA: CCFLAGS=-x cu -DFFTX_CUDA
+CUDA: CCFLAGS=-x cu
+CUDA: PRESETS=-DFFTX_CUDA
 # To get helper_cuda.h
 CUDA: CC_INCLUDE=-I$(CUDATOOLKIT_HOME)/../../examples/OpenMP/SDK/include
 CUDA: CC_LINK=-L$(CUDATOOLKIT_HOME)/lib64 -lcudart
@@ -36,7 +37,7 @@ CUDA: batch1d_test_driver perf_test_driver transformlib_test
 ## make HIP: needs ROCM_PATH and CRAY_MPICH_PREFIX
 #
 HIP: CC=hipcc
-HIP: CCFLAGS=-DFFTX_HIP
+HIP: PRESETS=-DFFTX_HIP
 # To get mpi.h
 HIP: CC_INCLUDE=-I$(CRAY_MPICH_PREFIX)/include
 HIP: CC_LINK=-L$(ROCM_PATH)/lib -lamdhip64 -lhipfft -lrocfft -lstdc++
@@ -61,7 +62,7 @@ CPU: poissonTest
 #
 %.o : %.cpp
 	mkdir -p temp
-	$(CC) $(CCFLAGS) $(CC_INCLUDE) $(FFTX_INCLUDE) $< -c -o temp/$@
+	$(CC) $(CCFLAGS) $(PRESETS) $(CC_INCLUDE) $(FFTX_INCLUDE) $< -c -o temp/$@
 
 #
 # Link object files, put executables in bin directory.
