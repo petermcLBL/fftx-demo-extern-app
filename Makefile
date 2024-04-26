@@ -37,7 +37,7 @@ ifdef CUDATOOLKIT_HOME
   CUDA_LIB=$(CUDATOOLKIT_HOME)/lib64
   ### To get libcudart.so.11.0 on perlmutter.
   # CUDA_LIB=/opt/nvidia/hpc_sdk/Linux_x86_64/22.7/cuda/11.7/lib64
-  CUDA_LINK=-DFFTX_CUDA -L$(CUDA_LIB) -lcudart
+  CUDA_LINK=-L$(CUDA_LIB) -lcudart
   CC_LINK=$(CUDA_LINK)
 
 #
@@ -52,7 +52,7 @@ else ifdef ROCM_PATH
   # FFTX_GPU_INCLUDE=/opt/rocm-5.3.0/include
   HIP_LIB=$(ROCM_PATH)/lib
   # HIP_LIB=/opt/rocm-5.3.0/lib/
-  HIP_LINK=-DFFTX_HIP -L$(HIP_LIB) -lamdhip64 -lhipfft -lstdc++
+  HIP_LINK=-L$(HIP_LIB) -lamdhip64 -lhipfft -lstdc++
   CC_LINK=$(HIP_LINK)
 
 #
