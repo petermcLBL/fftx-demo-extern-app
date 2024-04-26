@@ -30,7 +30,7 @@ CUDA: LDFLAGS=-Wl,--copy-dt-needed-entries
 # Need to link to ALL the libraries, even though we don't call them all.
 CUDA: FFTX_LIBRARIES=-lfftx_mpi -lfftx_mddft_gpu -lfftx_imddft_gpu -lfftx_mdprdft_gpu -lfftx_imdprdft_gpu -lfftx_dftbat_gpu -lfftx_idftbat_gpu -lfftx_prdftbat_gpu -lfftx_iprdftbat_gpu -lfftx_rconv_gpu
 # Targets to build.
-CUDA: poissonTest batch1d_test_driver perf_test_driver transformlib_test
+CUDA: batch1d_test_driver perf_test_driver transformlib_test
 
 #
 ## make HIP: needs ROCM_PATH and CRAY_MPICH_PREFIX
@@ -43,7 +43,7 @@ HIP: CC_LINK=-L$(ROCM_PATH)/lib -lamdhip64 -lhipfft -lrocfft -lstdc++
 # Need to link to ALL the libraries, even though we don't call them all.
 HIP: FFTX_LIBRARIES=-lfftx_mpi -lfftx_mddft_gpu -lfftx_imddft_gpu -lfftx_mdprdft_gpu -lfftx_imdprdft_gpu -lfftx_dftbat_gpu -lfftx_idftbat_gpu -lfftx_prdftbat_gpu -lfftx_iprdftbat_gpu -lfftx_rconv_gpu
 # Targets to build.
-HIP: poissonTest batch1d_test_driver perf_test_driver transformlib_test
+HIP: batch1d_test_driver perf_test_driver transformlib_test
 
 #
 ## make CPU: default
