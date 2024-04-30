@@ -73,7 +73,7 @@ CPU: poissonTest
 #
 # Link object files, put executables in bin directory.
 #
-LD=mpicc
+LD=mpicxx
 poissonTest batch1d_test_driver perf_test_driver transformlib_test : % : %.o
 	mkdir -p bin
 	$(LD) $(LDFLAGS) $(CC_LINK) $(FFTX_LINK) $(FFTX_LIBRARIES) temp/$< -o bin/$@
