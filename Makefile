@@ -11,8 +11,10 @@ FFTX_LIB_DIR=$(FFTX_HOME)/lib
 ifeq ($(VENDOR),apple)
   FFTX_LINK=-Wl,-rpath $(FFTX_LIB_DIR) -L$(FFTX_LIB_DIR)
 else
-  # This flag gets rid of annoying "DSO missing from command line" error.
-  LDFLAGS=-Wl,--copy-dt-needed-entries
+  ifndef ROCM_PATH
+    # This flag gets rid of annoying "DSO missing from command line" error.
+    LDFLAGS=-Wl,--copy-dt-needed-entries
+  endif
   FFTX_LINK=-Wl,-rpath=$(FFTX_LIB_DIR) -L$(FFTX_LIB_DIR)
 endif
 
