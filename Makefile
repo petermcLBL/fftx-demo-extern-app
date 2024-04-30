@@ -55,6 +55,7 @@ HIP: batch1d_test_driver perf_test_driver transformlib_test
 ## make CPU: default
 #
 CPU: CC=mpicxx
+CPU: CCFLAGS=-std=c++11
 # Need to link to ALL the libraries, even though we don't call them all.
 CPU: FFTX_LIBRARIES=-lfftx_mddft_cpu -lfftx_imddft_cpu -lfftx_mdprdft_cpu -lfftx_imdprdft_cpu -lfftx_dftbat_cpu -lfftx_idftbat_cpu -lfftx_prdftbat_cpu -lfftx_iprdftbat_cpu -lfftx_rconv_cpu
 # Targets to build.
