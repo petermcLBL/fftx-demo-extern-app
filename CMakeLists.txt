@@ -86,14 +86,25 @@ if ( "${CMAKE_CXX_COMPILER}" MATCHES "hipcc$" )
     list ( APPEND ADDL_COMPILE_FLAGS -DFFTX_HIP )
 endif ()
 
+find_package ( IntelSYCL )
+if ( ${IntelSYCL_FOUND} )
+    list ( APPEND LIBS_FOR_SYCL OpenCL mkl_core mkl_cdft_core mkl_sequential mkl_rt mkl_intel_lp64 mkl_sycl )
+    list ( APPEND ADDL_COMPILE_FLAGS -fsycl -DFFTX_SYCL )
+    list ( APPEND MPI_CXX_LINK_FLAGS -Wl,--copy-dt-needed-entries )
+endif ()
+
 set ( XFORMLIB_test transformlib_test )
 set ( POISSON1_TEST poissonTest )
 set ( PERF_FRAME_TEST perf_test_driver )
 set ( BATCH1D_DRIVER batch1d_test_driver )
 
-##  Set C standard 11
-set ( CMAKE_C_STANDARD 11 )
-set ( CMAKE_CXX_STANDARD 11 )
+if ( ${IntelSYCL_FOUND} )
+    set ( CMAKE_C_STANDARD 17)
+    set ( CMAKE_CXX_STANDARD 17)
+else ()
+    set ( CMAKE_C_STANDARD 11)
+    set ( CMAKE_CXX_STANDARD 11)
+endif ()
 
 if ( ${CUDAToolkit_FOUND} )
     set ( CUDA_COMPILE_FLAGS -m64 -rdc=false )
@@ -204,6 +215,16 @@ if ( ${hip_FOUND} )
     list ( APPEND _targets        ${BATCH1D_DRIVER} )
 
     set ( _build_for "HIP" )
+endif ()
+
+if ( ${IntelSYCL_FOUND} )
+    add_executable              ( ${POISSON1_TEST} ${POISSON1_TEST}.cpp )
+    set_source_files_properties ( ${POISSON1_TEST}.cpp PROPERTIES LANGUAGE CXX )
+    target_link_libraries       ( ${POISSON1_TEST} PRIVATE ${LIBS_FOR_SYCL} )
+    target_link_options         ( ${POISSON1_TEST} PRIVATE ${MPI_CXX_LINK_FLAGS} )
+    list ( APPEND _targets        ${POISSON1_TEST} )
+
+    set ( _build_for "SYCL" )
 endif ()
 
 message ( STATUS "_build_for = ${_build_for}" )
