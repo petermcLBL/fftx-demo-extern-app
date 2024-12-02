@@ -1,6 +1,6 @@
 #include <stdio.h>
 
-#include "device_macros.h"
+#include "fftxdevice_macros.h"
 
 #include "fftx_mddft_public.h"
 #include "fftx_imddft_public.h"
@@ -56,80 +56,80 @@ double diffAbs(std::complex<double>& a_x,
   return diffNorm;
 }
 
-DEVICE_FFT_RESULT deviceExecD2Z(DEVICE_FFT_HANDLE a_plan,
+FFTX_DEVICE_FFT_RESULT deviceExecD2Z(FFTX_DEVICE_FFT_HANDLE a_plan,
                                 double* a_in,
                                 std::complex<double>* a_out)
 {
-  return DEVICE_FFT_EXECD2Z(a_plan,
-                            (DEVICE_FFT_DOUBLEREAL*) a_in,
-                            (DEVICE_FFT_DOUBLECOMPLEX*) a_out);
+  return FFTX_DEVICE_FFT_EXECD2Z(a_plan,
+                            (FFTX_DEVICE_FFT_DOUBLEREAL*) a_in,
+                            (FFTX_DEVICE_FFT_DOUBLECOMPLEX*) a_out);
 }
 
 
 template<typename T_IN, typename T_OUT>
 struct deviceTransform
 {
-  deviceTransform(DEVICE_FFT_TYPE a_tp,
+  deviceTransform(FFTX_DEVICE_FFT_TYPE a_tp,
                   int a_dir = 0)
   {
     m_tp = a_tp;
     m_dir = a_dir;
   }
                   
-  DEVICE_FFT_TYPE m_tp;
+  FFTX_DEVICE_FFT_TYPE m_tp;
 
   int m_dir;
 
-  DEVICE_FFT_RESULT plan3d(DEVICE_FFT_HANDLE& a_plan,
+  FFTX_DEVICE_FFT_RESULT plan3d(FFTX_DEVICE_FFT_HANDLE& a_plan,
                            fftx::point_t<3> a_tfmSize)
   {
-    return DEVICE_FFT_PLAN3D(&a_plan,
+    return FFTX_DEVICE_FFT_PLAN3D(&a_plan,
                              a_tfmSize[0], a_tfmSize[1], a_tfmSize[2],
                              m_tp);
   }
 
-  DEVICE_FFT_RESULT exec(DEVICE_FFT_HANDLE a_plan,
+  FFTX_DEVICE_FFT_RESULT exec(FFTX_DEVICE_FFT_HANDLE a_plan,
                          T_IN* a_in,
                          T_OUT* a_out)
   {
-    if (m_tp == DEVICE_FFT_Z2Z)
+    if (m_tp == FFTX_DEVICE_FFT_Z2Z)
       {
-        return DEVICE_FFT_EXECZ2Z(a_plan,
-                                  (DEVICE_FFT_DOUBLECOMPLEX*) a_in,
-                                  (DEVICE_FFT_DOUBLECOMPLEX*) a_out,
+        return FFTX_DEVICE_FFT_EXECZ2Z(a_plan,
+                                  (FFTX_DEVICE_FFT_DOUBLECOMPLEX*) a_in,
+                                  (FFTX_DEVICE_FFT_DOUBLECOMPLEX*) a_out,
                                   m_dir);
       }
-    else if (m_tp == DEVICE_FFT_D2Z)
+    else if (m_tp == FFTX_DEVICE_FFT_D2Z)
       {
-        return DEVICE_FFT_EXECD2Z(a_plan,
-                                  (DEVICE_FFT_DOUBLEREAL*) a_in,
-                                  (DEVICE_FFT_DOUBLECOMPLEX*) a_out);
+        return FFTX_DEVICE_FFT_EXECD2Z(a_plan,
+                                  (FFTX_DEVICE_FFT_DOUBLEREAL*) a_in,
+                                  (FFTX_DEVICE_FFT_DOUBLECOMPLEX*) a_out);
       }
-    else if (m_tp == DEVICE_FFT_Z2D)
+    else if (m_tp == FFTX_DEVICE_FFT_Z2D)
       {
-        return DEVICE_FFT_EXECZ2D(a_plan,
-                                  (DEVICE_FFT_DOUBLECOMPLEX*) a_in,
-                                  (DEVICE_FFT_DOUBLEREAL*) a_out);
+        return FFTX_DEVICE_FFT_EXECZ2D(a_plan,
+                                  (FFTX_DEVICE_FFT_DOUBLECOMPLEX*) a_in,
+                                  (FFTX_DEVICE_FFT_DOUBLEREAL*) a_out);
       }
     else
       {
-        return (DEVICE_FFT_RESULT) -1;
+        return (FFTX_DEVICE_FFT_RESULT) -1;
       }
   }
 };
   
 
 deviceTransform<std::complex<double>, std::complex<double> >
-mddftDevice(DEVICE_FFT_Z2Z, DEVICE_FFT_FORWARD);
+mddftDevice(FFTX_DEVICE_FFT_Z2Z, FFTX_DEVICE_FFT_FORWARD);
 
 deviceTransform<std::complex<double>, std::complex<double> >
-imddftDevice(DEVICE_FFT_Z2Z, DEVICE_FFT_INVERSE);
+imddftDevice(FFTX_DEVICE_FFT_Z2Z, FFTX_DEVICE_FFT_INVERSE);
 
 deviceTransform<double, std::complex<double> >
-mdprdftDevice(DEVICE_FFT_D2Z);
+mdprdftDevice(FFTX_DEVICE_FFT_D2Z);
 
 deviceTransform<std::complex<double>, double>
-imdprdftDevice(DEVICE_FFT_Z2D);
+imdprdftDevice(FFTX_DEVICE_FFT_Z2D);
 
 template<typename T_IN, typename T_OUT>
 void inoutSizes(fftx::point_t<3>& a_inSize,
@@ -243,23 +243,23 @@ void compareSize(fftx::point_t<3> a_size,
   T_IN* inputDevicePtr;
   T_OUT* outputSpiralDevicePtr;
   T_OUT* outputDeviceFFTDevicePtr;
-  DEVICE_MALLOC(&inputDevicePtr, bytesInput);
-  DEVICE_MALLOC(&outputSpiralDevicePtr, bytesOutput);
-  DEVICE_MALLOC(&outputDeviceFFTDevicePtr, bytesOutput);
+  FFTX_DEVICE_MALLOC(&inputDevicePtr, bytesInput);
+  FFTX_DEVICE_MALLOC(&outputSpiralDevicePtr, bytesOutput);
+  FFTX_DEVICE_MALLOC(&outputDeviceFFTDevicePtr, bytesOutput);
   // Do this at the beginning of each iteration instead of here.
-  //  DEVICE_MEM_COPY(inputDevicePtr, inputHostPtr, // dest, source
+  //  FFTX_DEVICE_MEM_COPY(inputDevicePtr, inputHostPtr, // dest, source
   //                  npts*sizeof(double), // bytes
-  //                  MEM_COPY_HOST_TO_DEVICE); // type
+  //                  FFTX_MEM_COPY_HOST_TO_DEVICE); // type
   
   /*
     Set up timers for deviceFFT.
    */
-  DEVICE_EVENT_T spiralFFT_start, spiralFFT_stop;
-  DEVICE_EVENT_T deviceFFT_start, deviceFFT_stop;
-  DEVICE_EVENT_CREATE ( &spiralFFT_start );
-  DEVICE_EVENT_CREATE ( &spiralFFT_stop );
-  DEVICE_EVENT_CREATE ( &deviceFFT_start );
-  DEVICE_EVENT_CREATE ( &deviceFFT_stop );
+  FFTX_DEVICE_EVENT_T spiralFFT_start, spiralFFT_stop;
+  FFTX_DEVICE_EVENT_T deviceFFT_start, deviceFFT_stop;
+  FFTX_DEVICE_EVENT_CREATE ( &spiralFFT_start );
+  FFTX_DEVICE_EVENT_CREATE ( &spiralFFT_stop );
+  FFTX_DEVICE_EVENT_CREATE ( &deviceFFT_start );
+  FFTX_DEVICE_EVENT_CREATE ( &deviceFFT_stop );
 
   int iters = NUM_ITERS + BASE_ITERS;
 
@@ -267,12 +267,12 @@ void compareSize(fftx::point_t<3> a_size,
     Get plan for deviceFFT.
   */
   // printf("get deviceFFT plan\n");
-  DEVICE_FFT_HANDLE plan;
+  FFTX_DEVICE_FFT_HANDLE plan;
   {
     auto rc = a_tfmDevice.plan3d(plan, a_size);
-    if (rc != DEVICE_FFT_SUCCESS)
+    if (rc != FFTX_DEVICE_FFT_SUCCESS)
       {
-        printf ( "Create DEVICE_FFT_PLAN3D failed with error code %d ... skip buffer check\n",
+        printf ( "Create FFTX_DEVICE_FFT_PLAN3D failed with error code %d ... skip buffer check\n",
                  rc );
         doDevice = false;
       }
@@ -292,33 +292,33 @@ void compareSize(fftx::point_t<3> a_size,
     {
       for (int itn = 0; itn < iters; itn++ )
         {
-          DEVICE_MEM_COPY(inputDevicePtr, // dest
+          FFTX_DEVICE_MEM_COPY(inputDevicePtr, // dest
                           inputHostPtr, // source
                           bytesInput, // bytes
-                          MEM_COPY_HOST_TO_DEVICE); // type
-          DEVICE_CHECK_ERROR ( DEVICE_GET_LAST_ERROR() );
-          DEVICE_EVENT_RECORD( deviceFFT_start );
+                          FFTX_MEM_COPY_HOST_TO_DEVICE); // type
+          FFTX_DEVICE_CHECK_ERROR ( FFTX_DEVICE_GET_LAST_ERROR() );
+          FFTX_DEVICE_EVENT_RECORD( deviceFFT_start );
           int rc = a_tfmDevice.exec(plan,
                                     inputDevicePtr,
                                     outputDeviceFFTDevicePtr);
-          if (rc != DEVICE_FFT_SUCCESS)
+          if (rc != FFTX_DEVICE_FFT_SUCCESS)
             {
               printf ( "Launch device exec failed with error code %d ... skip buffer check\n",
                        rc );
               doDevice = false;
               break;
             }
-          DEVICE_EVENT_RECORD( deviceFFT_stop );
-          DEVICE_CHECK_ERROR ( DEVICE_GET_LAST_ERROR() );
-          DEVICE_EVENT_SYNCHRONIZE( deviceFFT_stop );
-          DEVICE_EVENT_ELAPSED_TIME( &deviceFFT_gpu[itn],
+          FFTX_DEVICE_EVENT_RECORD( deviceFFT_stop );
+          FFTX_DEVICE_CHECK_ERROR ( FFTX_DEVICE_GET_LAST_ERROR() );
+          FFTX_DEVICE_EVENT_SYNCHRONIZE( deviceFFT_stop );
+          FFTX_DEVICE_EVENT_ELAPSED_TIME( &deviceFFT_gpu[itn],
                                      deviceFFT_start,
                                      deviceFFT_stop );
         }
     }
-  DEVICE_FFT_DESTROY(plan);
+  FFTX_DEVICE_FFT_DESTROY(plan);
 
-  DEVICE_SYNCHRONIZE();
+  FFTX_DEVICE_SYNCHRONIZE();
 
   // printf("call Spiral transform %d times\n", iters);
 
@@ -331,35 +331,35 @@ void compareSize(fftx::point_t<3> a_size,
       spiral_gpu[i] = 0.;
     }
 
-  DEVICE_MEM_COPY(inputDevicePtr, // dest
+  FFTX_DEVICE_MEM_COPY(inputDevicePtr, // dest
                   inputHostPtr, // source
                   bytesInput, // bytes
-                  MEM_COPY_HOST_TO_DEVICE); // type
-  DEVICE_CHECK_ERROR ( DEVICE_GET_LAST_ERROR() );
+                  FFTX_MEM_COPY_HOST_TO_DEVICE); // type
+  FFTX_DEVICE_CHECK_ERROR ( FFTX_DEVICE_GET_LAST_ERROR() );
 
   if (doSpiral)
     {
       double sym[100];  // dummy symbol
       ( * a_tupl->initfp )();
-      DEVICE_CHECK_ERROR ( DEVICE_GET_LAST_ERROR () );
+      FFTX_DEVICE_CHECK_ERROR ( FFTX_DEVICE_GET_LAST_ERROR () );
 
       for (int itn = 0; itn < iters; itn++)
         {
-          DEVICE_EVENT_RECORD( spiralFFT_start );
+          FFTX_DEVICE_EVENT_RECORD( spiralFFT_start );
           ( * a_tupl->runfp ) ( (double*) outputSpiralDevicePtr,
                                 (double*) inputDevicePtr,
                                 sym );
-          DEVICE_EVENT_RECORD( spiralFFT_stop );
-          DEVICE_CHECK_ERROR ( DEVICE_GET_LAST_ERROR () );
-          DEVICE_EVENT_SYNCHRONIZE ( spiralFFT_stop );
-          DEVICE_EVENT_ELAPSED_TIME ( &spiral_gpu[itn],
+          FFTX_DEVICE_EVENT_RECORD( spiralFFT_stop );
+          FFTX_DEVICE_CHECK_ERROR ( FFTX_DEVICE_GET_LAST_ERROR () );
+          FFTX_DEVICE_EVENT_SYNCHRONIZE ( spiralFFT_stop );
+          FFTX_DEVICE_EVENT_ELAPSED_TIME ( &spiral_gpu[itn],
                                       spiralFFT_start,
                                       spiralFFT_stop );
         }
 
       //  Call the destroy function
       ( * a_tupl->destroyfp )();
-      DEVICE_CHECK_ERROR ( DEVICE_GET_LAST_ERROR () );
+      FFTX_DEVICE_CHECK_ERROR ( FFTX_DEVICE_GET_LAST_ERROR () );
     }
   
   /*
@@ -367,20 +367,20 @@ void compareSize(fftx::point_t<3> a_size,
   */
   T_OUT* outputSpiralHostPtr = new T_OUT[nptsOutput];
   T_OUT* outputDeviceFFTHostPtr = new T_OUT[nptsOutput];
-  DEVICE_MEM_COPY(outputSpiralHostPtr, // dest
+  FFTX_DEVICE_MEM_COPY(outputSpiralHostPtr, // dest
                   outputSpiralDevicePtr, // source
                   bytesOutput, // bytes
-                  MEM_COPY_DEVICE_TO_HOST); // type
-  DEVICE_CHECK_ERROR ( DEVICE_GET_LAST_ERROR() );
-  DEVICE_MEM_COPY(outputDeviceFFTHostPtr, // dest
+                  FFTX_MEM_COPY_DEVICE_TO_HOST); // type
+  FFTX_DEVICE_CHECK_ERROR ( FFTX_DEVICE_GET_LAST_ERROR() );
+  FFTX_DEVICE_MEM_COPY(outputDeviceFFTHostPtr, // dest
                   outputDeviceFFTDevicePtr, // source
                   bytesOutput, // bytes
-                  MEM_COPY_DEVICE_TO_HOST); // type
-  DEVICE_CHECK_ERROR ( DEVICE_GET_LAST_ERROR() );
+                  FFTX_MEM_COPY_DEVICE_TO_HOST); // type
+  FFTX_DEVICE_CHECK_ERROR ( FFTX_DEVICE_GET_LAST_ERROR() );
 
-  DEVICE_FREE(inputDevicePtr);
-  DEVICE_FREE(outputSpiralDevicePtr);
-  DEVICE_FREE(outputDeviceFFTDevicePtr);
+  FFTX_DEVICE_FREE(inputDevicePtr);
+  FFTX_DEVICE_FREE(outputSpiralDevicePtr);
+  FFTX_DEVICE_FREE(outputDeviceFFTDevicePtr);
 
   printf("cube = [ %d, %d, %d ]\t", a_size[0], a_size[1], a_size[2]);
   if (doSpiral && doDevice)

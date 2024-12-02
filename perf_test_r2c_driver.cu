@@ -2,7 +2,7 @@
 
 #include "fftx3.hpp"
 #include "fftx_mdprdft_public.h"
-#include "device_macros.h"
+#include "fftxdevice_macros.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -75,25 +75,25 @@ static void buildInputBuffer ( double *host_X, double *X, int genData )
         }
     }
 
-  DEVICE_MEM_COPY ( X, host_X,
+  FFTX_DEVICE_MEM_COPY ( X, host_X,
                     (M * N * K * sizeof(double)), // If complex, 2 *
-                    MEM_COPY_HOST_TO_DEVICE);
-  DEVICE_CHECK_ERROR ( DEVICE_GET_LAST_ERROR () );
+                    FFTX_MEM_COPY_HOST_TO_DEVICE);
+  FFTX_DEVICE_CHECK_ERROR ( FFTX_DEVICE_GET_LAST_ERROR () );
   return;
 }
 
 static void checkOutputBuffers ( double *Y, double *cufft_Y )
 {
   printf("cube = [ %d, %d, %d ]\t", M, N, K);
-  DEVICE_FFT_DOUBLECOMPLEX *host_Y       = new DEVICE_FFT_DOUBLECOMPLEX[M*N*K];
-  DEVICE_FFT_DOUBLECOMPLEX *host_cufft_Y = new DEVICE_FFT_DOUBLECOMPLEX[M*N*K];
+  FFTX_DEVICE_FFT_DOUBLECOMPLEX *host_Y       = new FFTX_DEVICE_FFT_DOUBLECOMPLEX[M*N*K];
+  FFTX_DEVICE_FFT_DOUBLECOMPLEX *host_cufft_Y = new FFTX_DEVICE_FFT_DOUBLECOMPLEX[M*N*K];
 
-  DEVICE_MEM_COPY ( host_Y,             Y,
-                    (M * N * K * sizeof(DEVICE_FFT_DOUBLECOMPLEX)),
-                    MEM_COPY_DEVICE_TO_HOST );
-  DEVICE_MEM_COPY ( host_cufft_Y, cufft_Y,
-                    (M * N * K * sizeof(DEVICE_FFT_DOUBLECOMPLEX)),
-                    MEM_COPY_DEVICE_TO_HOST );
+  FFTX_DEVICE_MEM_COPY ( host_Y,             Y,
+                    (M * N * K * sizeof(FFTX_DEVICE_FFT_DOUBLECOMPLEX)),
+                    FFTX_MEM_COPY_DEVICE_TO_HOST );
+  FFTX_DEVICE_MEM_COPY ( host_cufft_Y, cufft_Y,
+                    (M * N * K * sizeof(FFTX_DEVICE_FFT_DOUBLECOMPLEX)),
+                    FFTX_MEM_COPY_DEVICE_TO_HOST );
 
   bool correct = true;
   //  int errCount = 0;
@@ -105,8 +105,8 @@ static void checkOutputBuffers ( double *Y, double *cufft_Y )
         {
           for ( int k = 0; k < K; k++ )
             {
-              DEVICE_FFT_DOUBLECOMPLEX s = host_Y      [k + n*K + m*N*K];
-              DEVICE_FFT_DOUBLECOMPLEX c = host_cufft_Y[k + n*K + m*N*K];
+              FFTX_DEVICE_FFT_DOUBLECOMPLEX s = host_Y      [k + n*K + m*N*K];
+              FFTX_DEVICE_FFT_DOUBLECOMPLEX c = host_cufft_Y[k + n*K + m*N*K];
 	    
               bool elem_correct =
                 ( abs(s.x - c.x) < 1e-7 ) &&
@@ -237,11 +237,11 @@ int main( int argc, char** argv)
   rocfft_setup();
 #endif
 	
-  DEVICE_EVENT_T start, stop, custart, custop;
-  DEVICE_EVENT_CREATE ( &start );
-  DEVICE_EVENT_CREATE ( &stop );
-  DEVICE_EVENT_CREATE ( &custart );
-  DEVICE_EVENT_CREATE ( &custop );
+  FFTX_DEVICE_EVENT_T start, stop, custart, custop;
+  FFTX_DEVICE_EVENT_CREATE ( &start );
+  FFTX_DEVICE_EVENT_CREATE ( &stop );
+  FFTX_DEVICE_EVENT_CREATE ( &custart );
+  FFTX_DEVICE_EVENT_CREATE ( &custop );
 
   double *X, *Y;
   double sym[100];  // dummy symbol
@@ -265,12 +265,12 @@ int main( int argc, char** argv)
       else
         {
           M = curr.x[0], N = curr.x[1], K = curr.x[2];
-          DEVICE_MALLOC ( &X, ( M * N * K * sizeof(double) ) ); // complex has 2 *
-          DEVICE_MALLOC ( &Y, ( M * N * K * 2 * sizeof(double) ) );
+          FFTX_DEVICE_MALLOC ( &X, ( M * N * K * sizeof(double) ) ); // complex has 2 *
+          FFTX_DEVICE_MALLOC ( &Y, ( M * N * K * 2 * sizeof(double) ) );
 
           double *host_X = new double[ M * N * K ]; // complex has 2 *
-          DEVICE_FFT_DOUBLECOMPLEX *cufft_Y; 
-          DEVICE_MALLOC ( &cufft_Y, ( M * N * K * sizeof(DEVICE_FFT_DOUBLECOMPLEX) ) );
+          FFTX_DEVICE_FFT_DOUBLECOMPLEX *cufft_Y; 
+          FFTX_DEVICE_MALLOC ( &cufft_Y, ( M * N * K * sizeof(FFTX_DEVICE_FFT_DOUBLECOMPLEX) ) );
 
           //  want to run and time: 1st iteration; 2nd iteration; then N iterations
           //  Report 1st time, 2nd time, and average of N further iterations
@@ -278,17 +278,17 @@ int main( int argc, char** argv)
           float *cumilliseconds = new float[iters];
           bool check_buff = true;
 
-          DEVICE_FFT_HANDLE plan;
-          DEVICE_FFT_RESULT res;
-          res = DEVICE_FFT_PLAN3D ( &plan, M, N, K, DEVICE_FFT_D2Z );
-          if ( res != DEVICE_FFT_SUCCESS ) {
-            printf ( "Create DEVICE_FFT_PLAN3D failed with error code %d ... skip buffer check\n", res );
+          FFTX_DEVICE_FFT_HANDLE plan;
+          FFTX_DEVICE_FFT_RESULT res;
+          res = FFTX_DEVICE_FFT_PLAN3D ( &plan, M, N, K, FFTX_DEVICE_FFT_D2Z );
+          if ( res != FFTX_DEVICE_FFT_SUCCESS ) {
+            printf ( "Create FFTX_DEVICE_FFT_PLAN3D failed with error code %d ... skip buffer check\n", res );
             check_buff = false;
           }
 
           //  Call the transform init function
           ( * tupl->initfp )();
-          DEVICE_CHECK_ERROR ( DEVICE_GET_LAST_ERROR () );
+          FFTX_DEVICE_CHECK_ERROR ( FFTX_DEVICE_GET_LAST_ERROR () );
 
           // set up data in input buffer
           buildInputBuffer(host_X, X, 1);
@@ -302,13 +302,13 @@ int main( int argc, char** argv)
           for ( int ii = 0; ii < iters; ii++ )
             {
               //  Call the main transform function
-              DEVICE_EVENT_RECORD ( start );
+              FFTX_DEVICE_EVENT_RECORD ( start );
               ( * tupl->runfp ) ( Y, X, sym );
-              DEVICE_EVENT_RECORD ( stop );
-              DEVICE_CHECK_ERROR ( DEVICE_GET_LAST_ERROR () );
+              FFTX_DEVICE_EVENT_RECORD ( stop );
+              FFTX_DEVICE_CHECK_ERROR ( FFTX_DEVICE_GET_LAST_ERROR () );
 
-              DEVICE_EVENT_SYNCHRONIZE ( stop );
-              DEVICE_EVENT_ELAPSED_TIME ( &milliseconds[ii], start, stop );
+              FFTX_DEVICE_EVENT_SYNCHRONIZE ( stop );
+              FFTX_DEVICE_EVENT_ELAPSED_TIME ( &milliseconds[ii], start, stop );
 
               /* #ifdef USE_DIFF_DATA */
               /* 				buildInputBuffer(host_X, X, 1); */
@@ -319,26 +319,26 @@ int main( int argc, char** argv)
 
           //  Call the destroy function
           ( * tupl->destroyfp )();
-          DEVICE_CHECK_ERROR ( DEVICE_GET_LAST_ERROR () );
+          FFTX_DEVICE_CHECK_ERROR ( FFTX_DEVICE_GET_LAST_ERROR () );
 
           if ( check_buff )
             {
               for ( int ii = 0; ii < iters; ii++ )
                 {
-                  DEVICE_EVENT_RECORD ( custart );
-                  res = DEVICE_FFT_EXECD2Z ( plan,
-                                             (DEVICE_FFT_DOUBLEREAL *) X,
-                                             (DEVICE_FFT_DOUBLECOMPLEX *) cufft_Y );
-                  // C2C has additional argument DEVICE_FFT_FORWARD
-                  if ( res != DEVICE_FFT_SUCCESS)
+                  FFTX_DEVICE_EVENT_RECORD ( custart );
+                  res = FFTX_DEVICE_FFT_EXECD2Z ( plan,
+                                             (FFTX_DEVICE_FFT_DOUBLEREAL *) X,
+                                             (FFTX_DEVICE_FFT_DOUBLECOMPLEX *) cufft_Y );
+                  // C2C has additional argument FFTX_DEVICE_FFT_FORWARD
+                  if ( res != FFTX_DEVICE_FFT_SUCCESS)
                     {
-                      printf ( "Launch DEVICE_FFT_EXECD2Z failed with error code %d ... skip buffer check\n", res );
+                      printf ( "Launch FFTX_DEVICE_FFT_EXECD2Z failed with error code %d ... skip buffer check\n", res );
                       check_buff = false;
                       break;
                     }
-                  DEVICE_EVENT_RECORD ( custop );
-                  DEVICE_EVENT_SYNCHRONIZE ( custop );
-                  DEVICE_EVENT_ELAPSED_TIME ( &cumilliseconds[ii], custart, custop );
+                  FFTX_DEVICE_EVENT_RECORD ( custop );
+                  FFTX_DEVICE_EVENT_SYNCHRONIZE ( custop );
+                  FFTX_DEVICE_EVENT_ELAPSED_TIME ( &cumilliseconds[ii], custart, custop );
 
                   /* #ifdef USE_DIFF_DATA */
                   /* 				buildInputBuffer(host_X, X, 1); */
@@ -347,7 +347,7 @@ int main( int argc, char** argv)
                   /* #endif */
                 }
             }
-          DEVICE_SYNCHRONIZE ();
+          FFTX_DEVICE_SYNCHRONIZE ();
 
           //  check cufft/rocfft and FFTX got same results
           if ( check_buff ) checkOutputBuffers ( Y, (double *)cufft_Y );
@@ -367,9 +367,9 @@ int main( int argc, char** argv)
           printf("%f\tms (SPIRAL) vs\t%f\tms (hipfft), AVERAGE over %d iterations (range: 11 - %d) ##PICKME## \n",
                  cumulSpiral / NUM_ITERS, cumulHip / NUM_ITERS, NUM_ITERS, (10 + NUM_ITERS) );
 
-          DEVICE_FREE ( X );
-          DEVICE_FREE ( Y );
-          DEVICE_FREE ( cufft_Y );
+          FFTX_DEVICE_FREE ( X );
+          FFTX_DEVICE_FREE ( Y );
+          FFTX_DEVICE_FREE ( cufft_Y );
           delete[] host_X;
           delete[] milliseconds;
           delete[] cumilliseconds;

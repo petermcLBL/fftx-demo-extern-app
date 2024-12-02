@@ -1,8 +1,8 @@
 #include <stdio.h>
 
 #include "fftx3.hpp"
-#include "interface.hpp"
-#include "transformlib.hpp"
+#include "fftxinterface.hpp"
+#include "fftxtransformlib.hpp"
 
 #include <stdlib.h>
 #include <string.h>
@@ -15,9 +15,9 @@
 #endif
 
 #if defined ( PRINTDEBUG )
-#define DEBUGOUT 1
+#define FFTX_DEBUGOUT 1
 #else
-#define DEBUGOUT 0
+#define FFTX_DEBUGOUT 0
 #endif
 
 static int M, N, K, K_adj;
@@ -89,8 +89,8 @@ static void buildInputBuffer ( double *host_X, double *X, bool genData, bool gen
 
     unsigned int nbytes = M * N * KK * sizeof(double);
     if ( genComplex ) nbytes *= 2;
-    DEVICE_MEM_COPY ( X, host_X, nbytes, MEM_COPY_HOST_TO_DEVICE);
-    DEVICE_CHECK_ERROR ( DEVICE_GET_LAST_ERROR () );
+    FFTX_DEVICE_MEM_COPY ( X, host_X, nbytes, FFTX_MEM_COPY_HOST_TO_DEVICE);
+    FFTX_DEVICE_CHECK_ERROR ( FFTX_DEVICE_GET_LAST_ERROR () );
     return;
 }
 
@@ -128,8 +128,8 @@ static void checkOutputBuffers ( double *Y, double *cufft_Y, bool isR2C, bool xf
 
     double *tmp_Y       = new double [ datasz ];
     double *tmp_cufft_Y = new double [ datasz ];
-    DEVICE_MEM_COPY ( tmp_Y,             Y, datasz * sizeof(double), MEM_COPY_DEVICE_TO_HOST );
-    DEVICE_MEM_COPY ( tmp_cufft_Y, cufft_Y, datasz * sizeof(double), MEM_COPY_DEVICE_TO_HOST );
+    FFTX_DEVICE_MEM_COPY ( tmp_Y,             Y, datasz * sizeof(double), FFTX_MEM_COPY_DEVICE_TO_HOST );
+    FFTX_DEVICE_MEM_COPY ( tmp_cufft_Y, cufft_Y, datasz * sizeof(double), FFTX_MEM_COPY_DEVICE_TO_HOST );
 
     bool correct = true;
     double maxdelta = 0.0;
@@ -138,10 +138,10 @@ static void checkOutputBuffers ( double *Y, double *cufft_Y, bool isR2C, bool xf
         for ( int n = 0; n < N; n++ ) {
             for ( int k = 0; k < KK; k++ ) {
                 if ( compCplx ) {
-                    DEVICE_FFT_DOUBLECOMPLEX *host_Y       = (DEVICE_FFT_DOUBLECOMPLEX *) tmp_Y;
-                    DEVICE_FFT_DOUBLECOMPLEX *host_cufft_Y = (DEVICE_FFT_DOUBLECOMPLEX *) tmp_cufft_Y;
-                    DEVICE_FFT_DOUBLECOMPLEX s = host_Y      [k + n*KK + m*N*KK];
-                    DEVICE_FFT_DOUBLECOMPLEX c = host_cufft_Y[k + n*KK + m*N*KK];
+                    FFTX_DEVICE_FFT_DOUBLECOMPLEX *host_Y       = (FFTX_DEVICE_FFT_DOUBLECOMPLEX *) tmp_Y;
+                    FFTX_DEVICE_FFT_DOUBLECOMPLEX *host_cufft_Y = (FFTX_DEVICE_FFT_DOUBLECOMPLEX *) tmp_cufft_Y;
+                    FFTX_DEVICE_FFT_DOUBLECOMPLEX s = host_Y      [k + n*KK + m*N*KK];
+                    FFTX_DEVICE_FFT_DOUBLECOMPLEX c = host_cufft_Y[k + n*KK + m*N*KK];
 
                     bool elem_correct = ( (abs(s.x - c.x) < 1e-7) && (abs(s.y - c.y) < 1e-7) );
                     maxdelta = maxdelta < (double)(abs(s.x -c.x)) ? (double)(abs(s.x -c.x)) : maxdelta ;
@@ -178,12 +178,12 @@ static int NUM_ITERS = 100;
 template<class T>
 static void    run_transform ( fftx::point_t<3> curr, bool isR2C, bool xfmdir, T p )
 {
-    if ( DEBUGOUT)     std::cout << "Entered run_transform: name = " << p.name <<  std::endl;
-    DEVICE_EVENT_T start, stop, custart, custop;
-    DEVICE_EVENT_CREATE ( &start );
-    DEVICE_EVENT_CREATE ( &stop );
-    DEVICE_EVENT_CREATE ( &custart );
-    DEVICE_EVENT_CREATE ( &custop );
+    if ( FFTX_DEBUGOUT)     std::cout << "Entered run_transform: name = " << p.name <<  std::endl;
+    FFTX_DEVICE_EVENT_T start, stop, custart, custop;
+    FFTX_DEVICE_EVENT_CREATE ( &start );
+    FFTX_DEVICE_EVENT_CREATE ( &stop );
+    FFTX_DEVICE_EVENT_CREATE ( &custart );
+    FFTX_DEVICE_EVENT_CREATE ( &custop );
 
     double *X, *Y;
     double sym[100];  // dummy symbol
@@ -192,51 +192,51 @@ static void    run_transform ( fftx::point_t<3> curr, bool isR2C, bool xfmdir, T
     M = curr.x[0], N = curr.x[1], K = curr.x[2];
     K_adj = (int) ( K / 2 ) + 1;
     double *host_X;
-    DEVICE_FFT_DOUBLEREAL *cufft_Y;
+    FFTX_DEVICE_FFT_DOUBLEREAL *cufft_Y;
 
     if ( isR2C && xfmdir ) {
         //  When is real-2-complex and xfmdir (i.e., forward) input is real (double) of dims M * N * K
         //  and the output array is (complex) of dims M * N * (K/2) + 1)
-        DEVICE_MALLOC ( &X,       ( M * N * K     * sizeof(DEVICE_FFT_DOUBLEREAL) ) );
-        DEVICE_MALLOC ( &Y,       ( M * N * K_adj * sizeof(DEVICE_FFT_DOUBLECOMPLEX) ) );
-        DEVICE_MALLOC ( &cufft_Y, ( M * N * K_adj * sizeof(DEVICE_FFT_DOUBLECOMPLEX) ) );
+        FFTX_DEVICE_MALLOC ( &X,       ( M * N * K     * sizeof(FFTX_DEVICE_FFT_DOUBLEREAL) ) );
+        FFTX_DEVICE_MALLOC ( &Y,       ( M * N * K_adj * sizeof(FFTX_DEVICE_FFT_DOUBLECOMPLEX) ) );
+        FFTX_DEVICE_MALLOC ( &cufft_Y, ( M * N * K_adj * sizeof(FFTX_DEVICE_FFT_DOUBLECOMPLEX) ) );
         host_X = new double[ M * N * K ];
     }
     else if ( isR2C && !xfmdir ) {
         //  When is real-2-complex and !xfmdir (i.e., inverse) input is complex of dims M * N * (K/2) + 1)
         //  and the output array is (double) of dims M * N * K
-        DEVICE_MALLOC ( &X,       ( M * N * K_adj * sizeof(DEVICE_FFT_DOUBLECOMPLEX) ) );
-        DEVICE_MALLOC ( &Y,       ( M * N * K     * sizeof(DEVICE_FFT_DOUBLEREAL) ) );
-        DEVICE_MALLOC ( &cufft_Y, ( M * N * K     * sizeof(DEVICE_FFT_DOUBLEREAL) ) );
+        FFTX_DEVICE_MALLOC ( &X,       ( M * N * K_adj * sizeof(FFTX_DEVICE_FFT_DOUBLECOMPLEX) ) );
+        FFTX_DEVICE_MALLOC ( &Y,       ( M * N * K     * sizeof(FFTX_DEVICE_FFT_DOUBLEREAL) ) );
+        FFTX_DEVICE_MALLOC ( &cufft_Y, ( M * N * K     * sizeof(FFTX_DEVICE_FFT_DOUBLEREAL) ) );
         host_X = new double[ M * N * K_adj * 2];
     }
     else {
         // complex-2-complex: input and output are complex of dims M * N * K
-        DEVICE_MALLOC ( &X,       ( M * N * K * sizeof(DEVICE_FFT_DOUBLECOMPLEX) ) );
-        DEVICE_MALLOC ( &Y,       ( M * N * K * sizeof(DEVICE_FFT_DOUBLECOMPLEX) ) );
-        DEVICE_MALLOC ( &cufft_Y, ( M * N * K * sizeof(DEVICE_FFT_DOUBLECOMPLEX) ) );
+        FFTX_DEVICE_MALLOC ( &X,       ( M * N * K * sizeof(FFTX_DEVICE_FFT_DOUBLECOMPLEX) ) );
+        FFTX_DEVICE_MALLOC ( &Y,       ( M * N * K * sizeof(FFTX_DEVICE_FFT_DOUBLECOMPLEX) ) );
+        FFTX_DEVICE_MALLOC ( &cufft_Y, ( M * N * K * sizeof(FFTX_DEVICE_FFT_DOUBLECOMPLEX) ) );
         host_X = new double[ M * N * K * 2];
     }
 
-    if ( DEBUGOUT) std::cout << "malloced memory" << std::endl;
+    if ( FFTX_DEBUGOUT) std::cout << "malloced memory" << std::endl;
     //  want to run and time: 1st iteration; 2nd iteration; then N iterations
     //  Report 1st time, 2nd time, and average of N further iterations
     float *milliseconds   = new float[iters];
     float *cumilliseconds = new float[iters];
     bool check_buff = true;
 
-    DEVICE_FFT_HANDLE plan;
-    DEVICE_FFT_RESULT res;
-    DEVICE_FFT_TYPE   xfmtype = ( !isR2C ) ? DEVICE_FFT_Z2Z : ( xfmdir ) ? DEVICE_FFT_D2Z : DEVICE_FFT_Z2D ;
+    FFTX_DEVICE_FFT_HANDLE plan;
+    FFTX_DEVICE_FFT_RESULT res;
+    FFTX_DEVICE_FFT_TYPE   xfmtype = ( !isR2C ) ? FFTX_DEVICE_FFT_Z2Z : ( xfmdir ) ? FFTX_DEVICE_FFT_D2Z : FFTX_DEVICE_FFT_Z2D ;
 
-    res = DEVICE_FFT_PLAN3D ( &plan, M, N, K, xfmtype );
-    if ( res != DEVICE_FFT_SUCCESS ) {
-        printf ( "Create DEVICE_FFT_PLAN3D failed with error code %d ... skip buffer check\n", res );
+    res = FFTX_DEVICE_FFT_PLAN3D ( &plan, M, N, K, xfmtype );
+    if ( res != FFTX_DEVICE_FFT_SUCCESS ) {
+        printf ( "Create FFTX_DEVICE_FFT_PLAN3D failed with error code %d ... skip buffer check\n", res );
         fflush ( stdout );
         check_buff = false;
     }
 
-    if ( DEBUGOUT) std::cout << "Created device fft plan: " << p.name <<  std::endl;
+    if ( FFTX_DEBUGOUT) std::cout << "Created device fft plan: " << p.name <<  std::endl;
     // set up data in input buffer: gen data = true,
     // gen complex = true if !isR2C or (isR2C and inverse direction); false otherwise
     // use full K dim = false when (isR2C and inverse direction); true otherwise
@@ -261,8 +261,8 @@ static void    run_transform ( fftx::point_t<3> curr, bool isR2C, bool xfmdir, T
         buildInputBuffer ( herm_X, Y, true /* generate data */, false /* gen complex data */, true /* full K dim */ );
 
         mdpr.transform();
-        DEVICE_CHECK_ERROR ( DEVICE_GET_LAST_ERROR () );
-        DEVICE_MEM_COPY ( host_X, X, (  M * N * K_adj * 2 ) * sizeof(double), MEM_COPY_DEVICE_TO_HOST );
+        FFTX_DEVICE_CHECK_ERROR ( FFTX_DEVICE_GET_LAST_ERROR () );
+        FFTX_DEVICE_MEM_COPY ( host_X, X, (  M * N * K_adj * 2 ) * sizeof(double), FFTX_MEM_COPY_DEVICE_TO_HOST );
 
         // normalize the data returned
         for ( int ii = 0; ii < M * N * K_adj * 2; ii++ )
@@ -283,7 +283,7 @@ static void    run_transform ( fftx::point_t<3> curr, bool isR2C, bool xfmdir, T
     /*     printf ( "done\n" ); */
     /* } */
 
-    if ( DEBUGOUT) std::cout << "Setup to run transform" << std::endl;
+    if ( FFTX_DEBUGOUT) std::cout << "Setup to run transform" << std::endl;
     std::vector<int> sizes { M, N, K };
     #if defined FFTX_HIP
         std::vector<void*> args { Y, X, sym };
@@ -311,32 +311,32 @@ static void    run_transform ( fftx::point_t<3> curr, bool isR2C, bool xfmdir, T
 
     if ( check_buff ) {
         for ( int ii = 0; ii < iters; ii++ ) {
-            DEVICE_EVENT_RECORD ( custart );
+            FFTX_DEVICE_EVENT_RECORD ( custart );
             if ( !isR2C ) {
-                res = DEVICE_FFT_EXECZ2Z ( plan,
-                                           (DEVICE_FFT_DOUBLECOMPLEX *) X,
-                                           (DEVICE_FFT_DOUBLECOMPLEX *) cufft_Y,
-                                           ( xfmdir ) ? DEVICE_FFT_FORWARD : DEVICE_FFT_INVERSE );
+                res = FFTX_DEVICE_FFT_EXECZ2Z ( plan,
+                                           (FFTX_DEVICE_FFT_DOUBLECOMPLEX *) X,
+                                           (FFTX_DEVICE_FFT_DOUBLECOMPLEX *) cufft_Y,
+                                           ( xfmdir ) ? FFTX_DEVICE_FFT_FORWARD : FFTX_DEVICE_FFT_INVERSE );
             }
             else {
                 if ( xfmdir )
-                    res = DEVICE_FFT_EXECD2Z ( plan,
-                                               (DEVICE_FFT_DOUBLEREAL *) X,
-                                               (DEVICE_FFT_DOUBLECOMPLEX *) cufft_Y );
+                    res = FFTX_DEVICE_FFT_EXECD2Z ( plan,
+                                               (FFTX_DEVICE_FFT_DOUBLEREAL *) X,
+                                               (FFTX_DEVICE_FFT_DOUBLECOMPLEX *) cufft_Y );
                 else
-                    res = DEVICE_FFT_EXECZ2D ( plan,
-                                               (DEVICE_FFT_DOUBLECOMPLEX *) X,
-                                               (DEVICE_FFT_DOUBLEREAL *) cufft_Y );
+                    res = FFTX_DEVICE_FFT_EXECZ2D ( plan,
+                                               (FFTX_DEVICE_FFT_DOUBLECOMPLEX *) X,
+                                               (FFTX_DEVICE_FFT_DOUBLEREAL *) cufft_Y );
             }
-            if ( res != DEVICE_FFT_SUCCESS) {
-                printf ( "Launch DEVICE_FFT_EXEC failed with error code %d ... skip buffer check\n", res );
+            if ( res != FFTX_DEVICE_FFT_SUCCESS) {
+                printf ( "Launch FFTX_DEVICE_FFT_EXEC failed with error code %d ... skip buffer check\n", res );
                 fflush ( stdout );
                 check_buff = false;
                 break;
             }
-            DEVICE_EVENT_RECORD ( custop );
-            DEVICE_EVENT_SYNCHRONIZE ( custop );
-            DEVICE_EVENT_ELAPSED_TIME ( &cumilliseconds[ii], custart, custop );
+            FFTX_DEVICE_EVENT_RECORD ( custop );
+            FFTX_DEVICE_EVENT_SYNCHRONIZE ( custop );
+            FFTX_DEVICE_EVENT_ELAPSED_TIME ( &cumilliseconds[ii], custart, custop );
 
             //  if ( isR2C && !xfmdir ) {
             if ( isR2C  ) {
@@ -353,7 +353,7 @@ static void    run_transform ( fftx::point_t<3> curr, bool isR2C, bool xfmdir, T
             }
         }
     }
-    DEVICE_SYNCHRONIZE ();
+    FFTX_DEVICE_SYNCHRONIZE ();
 
     //  check cufft/rocfft and FFTX got same results
     if ( check_buff ) checkOutputBuffers ( Y, (double *)cufft_Y, isR2C, xfmdir );
@@ -384,9 +384,9 @@ static void    run_transform ( fftx::point_t<3> curr, bool isR2C, bool xfmdir, T
            minSpiral, maxSpiral, minroc, GPU_STR, maxroc, GPU_STR );
     fflush ( stdout );
 
-    DEVICE_FREE ( X );
-    DEVICE_FREE ( Y );
-    DEVICE_FREE ( cufft_Y );
+    FFTX_DEVICE_FREE ( X );
+    FFTX_DEVICE_FREE ( Y );
+    FFTX_DEVICE_FREE ( cufft_Y );
     delete[] host_X;
     delete[] milliseconds;
     delete[] cumilliseconds;

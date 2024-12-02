@@ -6,8 +6,8 @@
 // #include "mddft.fftx.precompile.hpp"
 
 #include "fftx3.hpp"
-#include "interface.hpp"
-#include "transformlib.hpp"
+#include "fftxinterface.hpp"
+#include "fftxtransformlib.hpp"
 
 
 void GetCmdLineArgumenti(int argc, const char** argv, const char* name, int* rtn)
