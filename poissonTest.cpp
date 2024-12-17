@@ -5,7 +5,6 @@
 // #include "imddft.fftx.precompile.hpp"
 // #include "mddft.fftx.precompile.hpp"
 
-#include "fftx3.hpp"
 #include "fftxinterface.hpp"
 #include "fftxtransformlib.hpp"
 

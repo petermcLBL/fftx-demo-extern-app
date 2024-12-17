@@ -1,6 +1,5 @@
 #include <stdio.h>
 
-#include "fftx3.hpp"
 #include "fftxinterface.hpp"
 #include "fftxtransformlib.hpp"
 

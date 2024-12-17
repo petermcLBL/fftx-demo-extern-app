@@ -1,6 +1,6 @@
 #include <stdio.h>
 
-#include "fftx3.hpp"
+#include "fftx.hpp"
 #include "fftx_psatd_gpu_public.h"
 //  #include "fftx_imddft_gpu_public.h"
 #include "fftxdevice_macros.h"
