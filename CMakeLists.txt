@@ -15,6 +15,7 @@ set(CMAKE_BUILD_TYPE Release CACHE STRING "Debug, Release, RelWithDebInfo, MinSi
 set ( PROJECT dftbatlib_test )
 set ( _build_for "CPU" )		##  Assume building for CPU
 
+# Warning: in CMake 3.30 and above, enable_language() can only be called after project(), according to policy CMP0165.
 enable_language ( C )
 enable_language ( CXX )
 
@@ -43,6 +44,7 @@ endif ()
 include ( CheckLanguage )
 check_language ( CUDA )
 if ( CMAKE_CUDA_COMPILER )
+    # Warning: in CMake 3.30 and above, enable_language() can only be called after project(), according to policy CMP0165.
     enable_language ( CUDA )
     find_package ( CUDAToolkit )
     if ( ${CUDAToolkit_FOUND} )
