@@ -60,10 +60,10 @@ git clone https://www.github.com/spiral-software/fftx-demo-extern-app
 cd fftx-demo-extern-app
 mkdir build
 cd build
-cmake ..
+cmake ..  # *or* on HIP only, do instead: cmake -DCMAKE_CXX_COMPILER=hipcc ..
 make install
 ```
-The demo application is installed at ~/work/fftx-demo-extern-app/build/bin
+The demo application is installed at ~/work/fftx-demo-extern-app/bin/
 
 ### Linking Applications With FFTX
 
